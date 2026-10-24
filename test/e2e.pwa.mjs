@@ -8,6 +8,7 @@ import { launchBrowser } from './_playwright.mjs';
 import { resolve } from 'node:path';
 import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { Checks, pngSize, readManifest, serveDirectory } from './_harness.mjs';
@@ -294,6 +295,33 @@ checks.ok(
 
 // --- 9. No console errors ---------------------------------------------------
 checks.equal('no console errors', consoleErrors.length, 0, consoleErrors.join(' | '));
+
+// --- 9c. The icon generator is deterministic --------------------------------
+// SPEC-006: two runs produce byte-identical PNGs. The script rewrites
+// public/*.png; because it is deterministic the files stay identical, which is
+// exactly the property being asserted.
+{
+  const iconNames = ['icon-192.png', 'icon-512.png', 'icon-maskable.png'];
+  const before = iconNames.map((name) =>
+    createHash('sha256').update(readFileSync(resolve('public', name))).digest('hex'),
+  );
+  execFileSync(process.execPath, [resolve('scripts/generate-icons.mjs')], { stdio: 'ignore' });
+  const after = iconNames.map((name) =>
+    createHash('sha256').update(readFileSync(resolve('public', name))).digest('hex'),
+  );
+  checks.ok(
+    'the icon generator is deterministic',
+    JSON.stringify(after) === JSON.stringify(before),
+    `${before.join(',')} vs ${after.join(',')}`,
+  );
+  const maskable = readFileSync(resolve('public', 'icon-maskable.png'));
+  checks.equal('the maskable icon is a PNG', maskable.subarray(0, 4).toString('hex'), '89504e47');
+  checks.ok(
+    'the maskable icon differs from the normal one (it has a safe zone)',
+    before[1] !== before[2],
+    `both are ${before[1].slice(0, 8)}`,
+  );
+}
 
 // --- 9b. A failed generation is reported, not left spinning -----------------
 // SPEC-006 RF-13/RF-14: force the generator's failure branch (a seed that does
