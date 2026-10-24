@@ -142,9 +142,16 @@ interface CellView {
   disponible descontando el padding).
 - Los bordes de bloque son **mas gruesos** que los internos: el test mide el grosor
   de un borde de bloque y el de uno interno y compara.
-- Seleccionar la celda 40 produce 9 celdas con `data-highlight="row"`, 9 con
-  `data-highlight="column"`, 9 con `data-highlight="block"` (contando la seleccionada
-  en las tres) y exactamente **1** celda con `data-selected="true"`.
+- Seleccionar la celda 40 marca **las otras 8 celdas** de su fila, **las otras 8**
+  de su columna y **las otras 8** de su bloque con `data-highlight`, y exactamente
+  **1** celda con `data-selected="true"`.
+- `data-highlight` toma **un solo valor** por celda, con la precedencia
+  `same > block > column > row` (ver `docs/data-model.md`): una celda que pertenece
+  a mas de un contexto lleva el de mayor precedencia. Por eso los conteos por
+  etiqueta **no** son 9/9/9: con la celda 40 seleccionada son 8 con `"block"`, 6
+  con `"column"` y 6 con `"row"` (las 2 celdas de la fila que estan en el bloque
+  toman `"block"`). La propiedad que se verifica es que **las 8 de cada unidad
+  estan marcadas**, no el reparto por etiqueta.
 - Al seleccionar una celda con un valor que aparece en otra celda, esa otra celda
   tiene `data-highlight="same"`.
 - El atributo `data-highlight` de una celda es **uno** de los cuatro valores, nunca
