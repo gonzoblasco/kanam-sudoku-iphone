@@ -201,6 +201,11 @@ button.menu-button {
   font-size: 1rem;
 }
 
+/* Generating: the menu stays usable, the keys just look inactive. */
+#menu button.busy {
+  opacity: 0.6;
+}
+
 /* Hide the screens that are not part of the current phase. The app toggles it. */
 .hidden {
   display: none !important;

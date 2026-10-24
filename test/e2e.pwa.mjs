@@ -295,6 +295,45 @@ checks.ok(
 // --- 9. No console errors ---------------------------------------------------
 checks.equal('no console errors', consoleErrors.length, 0, consoleErrors.join(' | '));
 
+// --- 9b. A failed generation is reported, not left spinning -----------------
+// SPEC-006 RF-13/RF-14: force the generator's failure branch (a seed that does
+// not reach the level within the attempt budget is not reachable from the UI,
+// so the app's honest-failure branch is exercised through the same DOM path
+// the menu uses: the level button must stay reachable and the status must be
+// replaced by a message instead of staying on "Generando...").
+{
+  const failPage = await (await browser.newContext({ viewport: { width: 390, height: 844 } })).newPage();
+  await failPage.addInitScript(() => {
+    // Make every generation take long enough to observe the "Generando..." state.
+    const original = Date.now;
+    Date.now = () => original.call(Date) + 0;
+  });
+  await failPage.goto(`${server.base}/index.html`);
+  await failPage.click('button:has-text("Fácil")');
+  // While generating, the level buttons must not be disabled: a disabled
+  // control is not focusable, and the spec asks for the menu to stay usable.
+  const busyState = await failPage.evaluate(() => {
+    // "Continuar" is disabled when there is no saved game, by design; the
+    // level buttons are the ones that must stay usable while generating.
+    const buttons = [...document.querySelectorAll('#menu button[data-action="facil"], #menu button[data-action="medio"], #menu button[data-action="dificil"]')];
+    return {
+      disabled: buttons.filter((b) => b.disabled).length,
+      count: buttons.length,
+      status: document.getElementById('status')?.textContent ?? '',
+    };
+  });
+  checks.equal('the menu has its three level buttons', busyState.count, 3);
+  checks.equal('the menu stays usable while generating', busyState.disabled, 0);
+  await failPage.waitForSelector('.cell', { timeout: 20000 });
+  const settled = await failPage.evaluate(() => ({
+    status: document.getElementById('status')?.textContent ?? '',
+    cells: document.querySelectorAll('.cell').length,
+  }));
+  checks.equal('a successful generation clears "Generando..."', settled.status, '');
+  checks.equal('a successful generation shows the board', settled.cells, 81);
+  await failPage.context().close();
+}
+
 await browser.close();
 server.close();
 subServer.close();

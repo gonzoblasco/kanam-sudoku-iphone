@@ -246,8 +246,12 @@ export function initApp(root: HTMLElement): void {
     phase = 'generating';
     ui.statusMessage.textContent = 'Generando...';
     showOnly('menuContainer');
+    // The menu stays usable while generating: SPEC-006 RF-13 and its edge case
+    // ask for the menu to remain accessible, and a disabled button is not
+    // focusable either, so disabling everything would strand a screen reader.
+    // A second generation started meanwhile replaces the first one.
     const buttons = ui.menuContainer.querySelectorAll('button');
-    buttons.forEach((b) => ((b as HTMLButtonElement).disabled = true));
+    buttons.forEach((b) => b.classList.add('busy'));
 
     // The generator is synchronous and can take a moment: yield first so the
     // "Generando..." state is actually painted.
@@ -256,14 +260,16 @@ export function initApp(root: HTMLElement): void {
       try {
         result = generatePuzzle(difficulty, { seed: Date.now() >>> 0 });
       } catch {
-        buttons.forEach((b) => ((b as HTMLButtonElement).disabled = false));
+        buttons.forEach((b) => b.classList.remove('busy'));
         ui.statusMessage.textContent =
           'No se pudo generar el puzzle. Probá de nuevo o elegí otro nivel.';
         phase = 'menu';
         showOnly('menuContainer');
         return;
       }
-      buttons.forEach((b) => ((b as HTMLButtonElement).disabled = false));
+      buttons.forEach((b) => b.classList.remove('busy'));
+      // A newer request superseded this one while it was generating.
+      if (phase !== 'generating' || currentDifficulty !== difficulty) return;
 
       if (!result.matched) {
         // Honest failure: the level was not reached, so it is not shown as if

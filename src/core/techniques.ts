@@ -274,6 +274,29 @@ const findLockedCandidatesClaiming = (c: Candidates): Deduction | null => {
       }
     }
   }
+  // The mirror case: a digit confined to one block inside a COLUMN removes it
+  // from the rest of that block. A catalogue that only knows the row direction
+  // reports `solved: false` for puzzles a human finishes with the other.
+  for (let col = 0; col < 9; col++) {
+    const colCells = CELLS_OF_UNIT[9 + col];
+    for (let d = 1; d <= 9; d++) {
+      const cells = colCells.filter((cell) => c[cell] !== 0 && has(c, cell, d));
+      if (cells.length < 2) continue;
+      const blocks = [...new Set(cells.map(blockOf))];
+      if (blocks.length !== 1) continue;
+      const rest = CELLS_OF_UNIT[18 + blocks[0]].filter((cell) => !cells.includes(cell));
+      const eliminate = buildElimination(c, rest, [d]);
+      if (eliminate.length > 0) {
+        return {
+          techniqueId: 'locked_candidates_claiming',
+          tier: 3,
+          cell: -1,
+          digit: -1,
+          eliminate,
+        };
+      }
+    }
+  }
   return null;
 };
 
