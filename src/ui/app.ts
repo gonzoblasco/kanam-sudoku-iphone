@@ -8,9 +8,14 @@
  */
 import {
   createGameState,
+  clearNotes,
   clearValue,
+  getNote,
   selectCell,
+  setAutoNotes,
+  setNote,
   setValue,
+  toggleNote,
   type GameState,
 } from '../state/state.ts';
 import { generatePuzzle } from '../core/generator.ts';
@@ -28,10 +33,11 @@ import { createTimer } from '../state/timer.ts';
 import { conflictCells, isSolved } from '../core/validator.ts';
 import { rowOf, colOf, blockOf } from '../core/geometry.ts';
 import type { Cell } from '../core/grid.ts';
-import { renderBoard } from './render.ts';
+import { noteDigits, renderBoard } from './render.ts';
 import { initKeypad } from './keypad.ts';
 import { initMenu, setContinueLabel } from './menu.ts';
 import { initVictory } from './victory.ts';
+import { initNotesControls, setNotesMode } from './notes-controls.ts';
 
 type Phase = 'menu' | 'generating' | 'playing' | 'victory';
 
@@ -43,6 +49,7 @@ interface UI {
   victoryContainer: HTMLElement;
   statusMessage: HTMLElement;
   liveRegion: HTMLElement;
+  notesContainer: HTMLElement;
 }
 
 /** Initialise the UI inside the given root element. */
@@ -60,6 +67,8 @@ export function initApp(root: HTMLElement): void {
   // predate the prefs, and labelling it with a guess would be a lie.
   let knownDifficulty: Difficulty | null = prefs.lastDifficulty;
   let currentDifficulty: Difficulty = knownDifficulty ?? 'facil';
+  /** In notes mode the keypad marks candidates instead of writing values. */
+  let notesMode = false;
   let hasSavedGame = loaded.state !== null && state.givens.length > 0;
 
   // The timer starts with the effective time already played. Restoring a game
@@ -91,6 +100,7 @@ export function initApp(root: HTMLElement): void {
     ui.boardContainer.classList.toggle('hidden', !visible.includes('boardContainer'));
     ui.keypadContainer.classList.toggle('hidden', !visible.includes('keypadContainer'));
     ui.victoryContainer.classList.toggle('hidden', !visible.includes('victoryContainer'));
+    ui.notesContainer.classList.toggle('hidden', !visible.includes('notesContainer'));
   };
 
   const renderMenu = (): void => {
@@ -107,7 +117,7 @@ export function initApp(root: HTMLElement): void {
 
   const renderPlaying = (): void => {
     phase = 'playing';
-    showOnly('boardContainer', 'keypadContainer');
+    showOnly('boardContainer', 'notesContainer', 'keypadContainer');
 
     const conflictSet = new Set(conflictCells(state.grid));
     const selected = state.selected;
@@ -133,6 +143,7 @@ export function initApp(root: HTMLElement): void {
         selected: index === selected,
         conflict: conflictSet.has(index),
         highlight,
+        notes: getNote(state, index),
         row: rowOf(index),
         column: colOf(index),
         block: blockOf(index),
@@ -216,8 +227,12 @@ export function initApp(root: HTMLElement): void {
     const row = rowOf(index) + 1;
     const col = colOf(index) + 1;
     const value = state.grid[index];
+    const notes = noteDigits(getNote(state, index));
+    const notesText = notes.length > 0 ? `: anotaciones ${notes.join(', ')}` : '';
     announce(
-      value === 0 ? `Fila ${row}, columna ${col}: vacía` : `Fila ${row}, columna ${col}: ${value}`,
+      value === 0
+        ? `Fila ${row}, columna ${col}: vacía${notesText}`
+        : `Fila ${row}, columna ${col}: ${value}${notesText}`,
     );
   };
 
@@ -302,6 +317,21 @@ export function initApp(root: HTMLElement): void {
     const selected = state.selected;
     if (selected === null) return;
 
+    // In notes mode the keypad marks candidates instead of writing values.
+    // A note is not a board mutation: it does not enter the undo history and
+    // it does not start the clock.
+    if (notesMode) {
+      if (digit === 0) {
+        state = setNote(state, selected, 0);
+      } else {
+        state = toggleNote(state, selected, digit);
+      }
+      save(state, storage);
+      renderPlaying();
+      announceCell(selected);
+      return;
+    }
+
     const next =
       digit === 0
         ? clearValue(state, selected)
@@ -339,6 +369,29 @@ export function initApp(root: HTMLElement): void {
 
   initMenu(ui, (difficulty) => startGeneration(difficulty));
   initKeypad(ui, (digit) => handleDigit(digit));
+
+  const notesControls = initNotesControls(ui.notesContainer, {
+    onToggleNotes: () => {
+      notesMode = !notesMode;
+      setNotesMode(notesControls, notesMode);
+      announce(notesMode ? 'Modo notas activado' : 'Modo notas desactivado');
+    },
+    onAutoNotes: () => {
+      if (phase !== 'playing') return;
+      state = setAutoNotes(state, state.grid);
+      save(state, storage);
+      renderPlaying();
+      announce('Candidatos calculados');
+    },
+    onClearNotes: () => {
+      if (phase !== 'playing') return;
+      state = clearNotes(state);
+      save(state, storage);
+      renderPlaying();
+      announce('Anotaciones borradas');
+    },
+  });
+  setNotesMode(notesControls, false);
   initVictory(
     ui,
     () => startGeneration(currentDifficulty),
@@ -420,7 +473,11 @@ function buildUI(root: HTMLElement): UI {
   live.classList.add('sr-only');
   live.setAttribute('aria-live', 'polite');
 
-  root.append(menu, board, keypad, victory, live, status);
+  const notes = document.createElement('div');
+  notes.id = 'notes-toolbar';
+  notes.classList.add('hidden');
+
+  root.append(menu, board, notes, keypad, victory, live, status);
 
   return {
     root,
@@ -430,5 +487,6 @@ function buildUI(root: HTMLElement): UI {
     victoryContainer: victory,
     statusMessage: status,
     liveRegion: live,
+    notesContainer: notes,
   };
 }

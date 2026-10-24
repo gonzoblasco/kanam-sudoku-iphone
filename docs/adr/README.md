@@ -15,8 +15,9 @@ registra como un ADR nuevo que **supersede** al anterior, no editando el viejo.
 | [ADR-0004](ADR-0004-estado-nucleo-extensible.md) | Un unico `GameState` con historial de mutaciones, extensible sin reescribir el nucleo | Aceptado | 2026-10-24 |
 | [ADR-0005](ADR-0005-github-pages-base-relativa.md) | GitHub Pages con `base: "./"` y rutas relativas | Aceptado | 2026-10-24 |
 | [ADR-0006](ADR-0006-proyecto-desde-cero.md) | Proyecto nuevo desde cero, sin reutilizar el motor de `kanam-sudoku` | Aceptado | 2026-10-24 |
+| [ADR-0007](ADR-0007-notas-no-son-jugadas.md) | Las notas por celda no son jugadas: viven fuera del historial de mutaciones | Aceptado | 2026-10-24 |
 
-**Sin superseded.** Los seis ADRs estan vigentes y son consistentes entre si.
+**Sin superseded.** Los siete ADRs estan vigentes y son consistentes entre si.
 
 ## Como se relacionan
 
@@ -32,3 +33,8 @@ registra como un ADR nuevo que **supersede** al anterior, no editando el viejo.
 - **ADR-0005** (rutas relativas) condiciona a **ADR-0003**: el precache y el
   fallback offline tienen que ser relativos, o el SW no encuentra nada bajo el
   subpath de Pages.
+- **ADR-0007** (las notas no son jugadas) es la **primera prueba de ADR-0004**:
+  la capacidad entro en la v1 y el nucleo (`core/`, `state/state.ts`) no cambio de
+  forma, porque el estado ya tenia `notes` y su API propia. Por eso la promesa de
+  ADR-0004 ("deshacer, notas y guardado se agregan sin reescribir el nucleo")
+  quedo cumplida, no solo declarada.

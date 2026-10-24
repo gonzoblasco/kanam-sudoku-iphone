@@ -39,7 +39,7 @@ del primer push.
 
 | Gate | Resultado |
 |---|---|
-| `npm test` | **73/73 tests, 0 fallos**, 1.6 s |
+| `npm test` | **91/91 tests, 0 fallos**, 11 suites |
 | `npm run typecheck` (`tsc --noEmit`) | limpio |
 | `npm run build` | ok, 20.2 kB (6.96 kB gzip) |
 | `node scripts/check-contrast.mjs` | **todos los pares AA** en ambos temas (9 pares x 2 temas) |
@@ -47,6 +47,7 @@ del primer push.
 | `node test/e2e.keypad.mjs` | **34/34** (incluye jugar una partida completa hasta la victoria) |
 | `node test/e2e.pwa.mjs` | **61/61** (manifest, iconos reales, SW, offline jugable, subpath) |
 | `node test/e2e.a11y.mjs` | **11/11** (axe-core: 0 violaciones) |
+| `node test/e2e.notes.mjs` | **40/40** (modo notas, grilla 3x3, auto, persistencia) |
 | CI en GitHub | **verde** (typecheck, tests, build, e2e, contraste) |
 | Deploy en GitHub Pages | **verde** |
 | Sitio desplegado | HTTP 200, 81 celdas, escritura funciona, 0 errores de consola |
@@ -68,6 +69,23 @@ real, el motor, el estado, la UI, el service worker y los tests se reescribieron
 Los e2e de ese agente **logueaban sin fallar**: un e2e que nunca sale con codigo 1
 no verifica nada, asi que ahora usan un harness que sale con 1 cuando un check
 falla.
+
+## Sistema de notas (2026-10-24)
+
+Pedido por Gonzo despues de la publicacion. Decisiones:
+
+- **Una nota no es una jugada**: no cambia el valor de una celda y **no entra al
+  historial de deshacer**. Por eso la API de notas (`setNote`, `toggleNote`)
+  vivia separada de `apply` desde el primer dia (ADR-0004).
+- **Dos mitades**: notas **manuales** (marcar candidatos con el teclado) y
+  **candidatos automaticos** ("Auto", que escribe los digitos legales de cada
+  celda vacia, calculados por el **mismo motor** que las tecnicas).
+- **El valor y las notas son informacion diferente**: viven en elementos distintos
+  (`.cell-value` y `.note-grid`), para que una celda con valor no parezca una
+  celda con notas.
+- Las notas **se guardan** con la partida: el payload ya las contemplaba desde
+  `schemaVersion` 1.
+- Una celda con valor **oculta** sus notas; al borrar el valor **vuelven**.
 
 ## Deuda y riesgos
 

@@ -29,11 +29,10 @@ npm test
 ```
 
 ```
-ℹ tests 73
-ℹ suites 8
-ℹ pass 73
+ℹ tests 91
+ℹ suites 11
+ℹ pass 91
 ℹ fail 0
-ℹ duration_ms 1585.355833
 ```
 
 ```bash
@@ -71,10 +70,11 @@ All colour pairs meet WCAG AA.
 ```
 
 ```bash
-node test/e2e.board.mjs     # e2e.board: 19/19 checks passed
-node test/e2e.keypad.mjs    # e2e.keypad: 23/23 checks passed
-node test/e2e.pwa.mjs       # e2e.pwa: 45/45 checks passed
-node test/e2e.a11y.mjs      # e2e.a11y: 7/7 checks passed
+node test/e2e.board.mjs     # e2e.board: 27/27 checks passed
+node test/e2e.keypad.mjs    # e2e.keypad: 34/34 checks passed
+node test/e2e.pwa.mjs       # e2e.pwa: 61/61 checks passed
+node test/e2e.a11y.mjs      # e2e.a11y: 11/11 checks passed
+node test/e2e.notes.mjs     # e2e.notes: 40/40 checks passed
 ```
 
 ```bash
@@ -107,6 +107,24 @@ test/         3 suites node --test + 4 e2e en Chromium real (390x844)
 .knowledge/   DISCOVERY, BRIEF, STATUS, KNOWLEDGE, specs/ (6 specs)
 docs/         architecture, CONTEXT, data-model, adr/ (6 ADRs)
 ```
+
+## Sistema de notas (2026-10-24, a pedido de Gonzo)
+
+Capacidad C12, que la v1 dejo fuera de alcance. Se agrego entera: **modo notas**,
+**candidatos automaticos** ("Auto") y **limpieza** de anotaciones, mas el render de
+la grilla 3x3 clasica y la persistencia (que ya estaba en el payload).
+
+La decision de diseno que la hace coherente: **una nota no es una jugada**. No
+cambia el valor de una celda y no entra al historial de deshacer (ADR-0007). Por
+eso su API (`setNote`, `toggleNote`) esta separada de `apply` desde el primer dia.
+
+**Fue la primera prueba real de ADR-0004**: la capacidad entro y **el nucleo no
+cambio de forma**. Eso es lo que la decision original compraba, y ahora esta
+demostrado en vez de declarado.
+
+Verificacion: `npm test` 91/91 (11 suites), `node test/e2e.notes.mjs` 40/40, y los
+otros cuatro e2e siguen en verde (27/34/61/11). El bundle paso de 23.8 kB a
+26.8 kB (8.76 kB gzip).
 
 ## La revision B (paso B del pipeline A/B) encontro 18 bugs reales
 

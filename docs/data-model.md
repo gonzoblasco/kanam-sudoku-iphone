@@ -156,6 +156,7 @@ interface CellView {
   selected: boolean;
   conflict: boolean;
   highlight: HighlightKind | null;   // UN valor, nunca una combinacion
+  notes: Mask;                       // 0 = sin notas (SPEC-007)
   row: number;    // 0..8
   column: number; // 0..8
   block: number;  // 0..8
@@ -262,6 +263,7 @@ puede guardar. **No** se propagan a la UI como una excepcion.
 src/
   core/            motor puro, sin DOM, testeado con node --test
     grid.ts        tipo Grid, validacion de forma (longitud, rango)
+    candidates.ts  digitos legales por celda: la base de las notas automaticas
     geometry.ts    UNIDADES (27), PEERS, indice <-> (fila, columna, bloque)
     mask.ts        la mascara de 9 bits. UNICA convencion del arbol: bit (d-1)
     solver.ts      backtracking con MRV, solve() y countSolutions(grid, cap)
@@ -275,7 +277,8 @@ src/
     persistence.ts serialize/deserialize + guardado con Storage inyectado
     timer.ts       tiempo efectivo de juego, con reloj inyectado
   ui/              capa DOM (cablea, no calcula)
-    render.ts      dibuja el tablero desde CellView[]
+    render.ts      dibuja el tablero desde CellView[] (valor en .cell-value, notas en .note-grid)
+    notes-controls.ts  boton de modo notas, Auto y Limpiar
     keypad.ts      teclado 1-9 + borrar
     menu.ts        menu de niveles + estado de generacion
     victory.ts     pantalla de victoria
@@ -296,6 +299,7 @@ scripts/
 | `notes` | `state/state.ts` | si (vacia en la v1) |
 | `history` | `state/state.ts` | **no** |
 | `CellView` | derivado | **no** |
+| `CellView.notes` | derivado de `GameState.notes` | **no** |
 | `Rating` | `core/rater.ts` | **no** (es de la generacion, no de la partida) |
 | `Puzzle.solution` | `core/generator.ts` | **no** (se puede rederivar del puzzle) |
 | Conflictos | derivado, `core/validator.ts` | **no** |

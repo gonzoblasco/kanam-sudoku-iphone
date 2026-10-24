@@ -58,6 +58,7 @@ jobs:
           node test/e2e.keypad.mjs
           node test/e2e.pwa.mjs
           node test/e2e.a11y.mjs
+          node test/e2e.notes.mjs
 
       - name: Contrast check
         run: node scripts/check-contrast.mjs

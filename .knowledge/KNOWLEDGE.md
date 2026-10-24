@@ -85,6 +85,16 @@ espera que sea cierto.
 | [ADR-0005](../../docs/adr/ADR-0005-github-pages-base-relativa.md) | GitHub Pages con `base: "./"` y rutas relativas | Funciona bajo el subpath `/kanam-sudoku-iphone/` y en la raiz |
 | [ADR-0006](../../docs/adr/ADR-0006-proyecto-desde-cero.md) | Proyecto nuevo desde cero, sin reutilizar el motor previo | Un solo motor en el repo, con una convencion de mascara; el v1 viejo queda como prehistoria |
 
+**Notas por celda (agregadas el 2026-10-24, a pedido de Gonzo):** capability C12,
+que la v1 dejo fuera de alcance. La decision de diseno que la hace coherente con
+el resto: **una nota no es una jugada**. No cambia el valor de una celda y no
+entra al historial de deshacer, asi que su API (`setNote`, `toggleNote`) esta
+separada de `apply` desde el primer dia (ADR-0004). El nucleo de las notas es
+`src/core/candidates.ts` (los digitos legales de una celda, los mismos que el
+motor de tecnicas calcula) y `src/state/state.ts` (las mascaras). En la UI, el
+valor de una celda y sus notas viven en elementos distintos (`.cell-value` y
+`.note-grid`).
+
 ## Que se reutiliza, y de donde
 
 | Pieza | De donde | Como |

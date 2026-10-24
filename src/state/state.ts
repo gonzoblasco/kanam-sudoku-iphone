@@ -11,6 +11,8 @@
  *     state, so a caller holding an older state still sees the old board.
  */
 import type { Cell, Grid } from '../core/grid.ts';
+import { bitFor } from '../core/mask.ts';
+import { autoNoteMasks } from '../core/candidates.ts';
 
 /** A reversible change to a single cell. */
 export type Mutation =
@@ -161,6 +163,39 @@ export const setNote = (state: GameState, index: number, mask: number): GameStat
 
 /** The candidate mask of a cell (0 means no notes). */
 export const getNote = (state: GameState, index: number): number => state.notes[index] ?? 0;
+
+/**
+ * Toggle one digit in a cell's notes.
+ *
+ * A note is not a board mutation: it does not change the value of a cell, so
+ * it does not enter the undo history. That is why this is a separate function
+ * and not a `Mutation`.
+ */
+export const toggleNote = (state: GameState, index: number, digit: number): GameState => {
+  if (!Number.isInteger(index) || index < 0 || index >= 81) {
+    throw new Error(`cell index out of range: ${index}`);
+  }
+  if (!Number.isInteger(digit) || digit < 1 || digit > 9) {
+    throw new Error(`note digit out of range: ${digit}`);
+  }
+  const current = getNote(state, index);
+  const mask = current ^ bitFor(digit);
+  return setNote(state, index, mask);
+};
+
+/**
+ * Write the automatic notes of every empty cell.
+ *
+ * The calculation replaces the previous notes: a manual note that the engine
+ * does not consider legal does not survive a recalculation.
+ */
+export const setAutoNotes = (state: GameState, grid: Grid): GameState => ({
+  ...state,
+  notes: autoNoteMasks(grid),
+});
+
+/** Remove every note of the game. */
+export const clearNotes = (state: GameState): GameState => ({ ...state, notes: {} });
 
 /** Undo the last mutation. */
 export const undo = (state: GameState): GameState => {

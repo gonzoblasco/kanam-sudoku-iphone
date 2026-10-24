@@ -137,11 +137,32 @@ navegador, snapshots (el historial guarda mutaciones, no copias del estado).
 
 ## Notas
 
-Mapa de celda a mascara de candidatos. **Presente en el estado desde el primer dia,
-vacia en la v1**: la UI no las renderiza.
+Mapa de celda a mascara de candidatos. **En la v1 desde el 2026-10-24** (SPEC-007):
+la UI las renderiza en la disposicion 3x3 clasica.
 
-_Avoid_: anotaciones, candidatos (un candidato individual es un digito de la
-mascara), pencil marks, marcas.
+Una nota **no es una jugada**: no cambia el valor de una celda y no entra al
+historial de deshacer. Es informacion de trabajo, no parte de la partida.
+
+_Avoid_: anotaciones (el glosario usa "notas"), candidatos (un candidato
+individual es un digito de la mascara; la nota es el conjunto), pencil marks,
+marcas.
+
+## Modo notas
+
+El estado de la interfaz en el que las teclas numericas **marcan candidatos** en
+vez de escribir valores. Es un modo de la interfaz, no un modo de la partida: el
+estado del juego no lo registra y no se guarda.
+
+_Avoid_: modo candidato, modo anotacion, modo pencil.
+
+## Digitos legales
+
+Los digitos que no aparecen todavia en la fila, la columna ni el bloque de una
+celda. Es la base del calculo de notas automaticas, y sale del **mismo motor** que
+las tecnicas de resolucion.
+
+_Avoid_: candidatos (el termino "candidato" es el de una nota marcada a mano),
+posibles, disponibles.
 
 ## Partida en curso
 
@@ -208,5 +229,10 @@ ingles, pero el glosario es en espanol), skin.
 4. **Completo no es ganado.** Un tablero lleno con conflictos no es una victoria.
 5. **Puzzle y partida.** El puzzle es el contenido generado; la partida es la sesion
    de juego sobre ese puzzle.
-6. **Nivel y dificultad.** El nivel es el valor que ve el jugador (`facil`/`medio`/
+6. **Una nota no es una jugada.** No cambia el valor de una celda y no se
+   deshace con el resto del tablero.
+7. **El valor de una celda y sus notas son informacion distinta.** En el DOM
+   viven en elementos distintos (`.cell-value` y `.note-grid`): una celda con
+   valor no debe parecer una celda con notas.
+8. **Nivel y dificultad.** El nivel es el valor que ve el jugador (`facil`/`medio`/
    `dificil`); la dificultad es la propiedad medida que lo determina.

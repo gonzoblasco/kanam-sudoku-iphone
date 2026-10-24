@@ -9,7 +9,7 @@
     "build": "vite build",
     "postbuild": "node scripts/gen-sw.mjs",
     "dev": "vite",
-    "e2e": "node test/e2e.board.mjs && node test/e2e.keypad.mjs && node test/e2e.pwa.mjs && node test/e2e.a11y.mjs",
+    "e2e": "node test/e2e.board.mjs && node test/e2e.keypad.mjs && node test/e2e.pwa.mjs && node test/e2e.a11y.mjs && node test/e2e.notes.mjs",
     "icons": "node scripts/generate-icons.mjs",
     "sw": "node scripts/gen-sw.mjs",
     "contrast": "node scripts/check-contrast.mjs"

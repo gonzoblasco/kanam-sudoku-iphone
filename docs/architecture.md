@@ -364,7 +364,7 @@ con olvidas:
 | Capacidad | Estado | Donde landingria en el futuro |
 |---|---|---|
 | C11 hints que explican la tecnica | Fuera de v1 | `core/techniques.ts` ya expone `technique` y `verify`; la v2 agrega `explain` y la UI del hint |
-| C12 notas por celda | Fuera de v1 (la estructura **si** esta) | `state/state.ts` ya tiene `notes` y `core/mask.ts` la convencion |
+| C12 notas por celda | **En la v1 desde el 2026-10-24** (SPEC-007) | `core/candidates.ts` (digitos legales), `state/state.ts` (`setNote`, `toggleNote`, `setAutoNotes`), `ui/notes-controls.ts`, `ui/render.ts` (grilla 3x3) |
 | C13 deshacer/rehacer | Fuera de v1 (el mecanismo **si** esta) | `state/state.ts` ya tiene `undo`/`redo` y el historial |
 | C14 estadisticas | Fuera de v1 | `state/persistence.ts` (una clave nueva, `kanam.sudoku.iphone.stats`) |
 | C15 cuentas / backend / telemetria | Fuera de v1 | fuera del modelo de datos: no existe backend |

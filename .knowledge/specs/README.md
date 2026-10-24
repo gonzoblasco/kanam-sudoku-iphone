@@ -12,6 +12,7 @@
 | [SPEC-004](SPEC-004-teclado-victoria.md) | Teclado numerico en pantalla y pantalla de victoria | P1 |
 | [SPEC-005](SPEC-005-estado-persistencia.md) | Estado de juego extensible y persistencia de la partida | P1 |
 | [SPEC-006](SPEC-006-pwa-menu.md) | PWA instalable, offline, iconos y menu de niveles | P1 |
+| [SPEC-007](SPEC-007-notas.md) | Sistema de notas: candidatos por celda, manual y automatico | P1 |
 
 ## Modelo conceptual compartido
 
@@ -77,12 +78,17 @@ SPEC-002 (validacion) ──┼──> SPEC-005 (estado) ──> SPEC-003 (table
 
 ## Fuera de alcance en la v1
 
-Las capacidades C11-C17 del discovery (hints, notas visibles, deshacer visible,
-estadisticas, cuentas/backend, variantes, notificaciones) **no** tienen spec: estan
-fuera de la v1 por decision de producto. Las que la v1 deja "preparadas" (notas en
-el estado, historial con undo/redo) tienen su criterio de verificacion **dentro**
-de SPEC-005, y esa verificacion es exactamente la prueba de que la extension no
-requiere reescribir el nucleo.
+Las capacidades C11, C13-C17 del discovery (hints, deshacer visible, estadisticas,
+cuentas/backend, variantes, notificaciones) **no** tienen spec: estan fuera de la v1
+por decision de producto. Las que la v1 deja "preparadas" (notas en el estado,
+historial con undo/redo) tienen su criterio de verificacion **dentro** de SPEC-005,
+y esa verificacion es exactamente la prueba de que la extension no requiere
+reescribir el nucleo.
+
+**C12 (notas por celda) entro en la v1 el 2026-10-24**, a pedido de Gonzo, y tiene
+su propia spec (SPEC-007). Es la **primera prueba real** de ADR-0004: la
+capacidad se agrego entera y el nucleo (`core/`, `state/state.ts`) no cambio de
+forma, porque el estado ya tenia `notes` y su API propia desde el primer dia.
 
 ## Como se validan
 

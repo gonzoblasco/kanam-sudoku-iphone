@@ -10,6 +10,8 @@
  * to a row while the container stacks them vertically renders a transposed
  * board: the puzzle looks scrambled even though the data is right.
  */
+import { hasDigit } from '../core/mask.ts';
+
 export interface CellView {
   index: number;
   value: number;
@@ -17,10 +19,48 @@ export interface CellView {
   selected: boolean;
   conflict: boolean;
   highlight: "row" | "column" | "block" | "same" | null;
+  /** The candidate mask of the cell (0 = no notes). */
+  notes: number;
   row: number;
   column: number;
   block: number;
 }
+
+/**
+ * The digits marked as notes in a cell, in ascending order.
+ *
+ * The mask uses the engine's convention (`bit (d-1)`), so the digit `d` sits
+ * in bit `d - 1`.
+ */
+export const noteDigits = (mask: number): number[] => {
+  const digits: number[] = [];
+  for (let d = 1; d <= 9; d++) {
+    if (hasDigit(mask, d)) digits.push(d);
+  }
+  return digits;
+};
+
+/**
+ * Draw the classic 3x3 pencil-mark grid of a cell.
+ *
+ * The grid is `aria-hidden`: the candidates are already in the cell's
+ * accessible name, and announcing them twice is noise for a screen reader.
+ */
+const renderNoteGrid = (cell: HTMLElement, mask: number): void => {
+  const grid = document.createElement("div");
+  grid.className = "note-grid";
+  grid.setAttribute("aria-hidden", "true");
+  const digits = noteDigits(mask);
+  for (let position = 1; position <= 9; position++) {
+    const slot = document.createElement("span");
+    slot.className = "note-slot";
+    slot.dataset.position = String(position);
+    const digit = digits.find((d) => d === position);
+    if (digit !== undefined) slot.textContent = String(digit);
+    grid.appendChild(slot);
+  }
+  cell.appendChild(grid);
+};
 
 /** Render the board into the provided container. */
 export function renderBoard(container: HTMLElement, views: CellView[]): void {
@@ -46,9 +86,14 @@ export function renderBoard(container: HTMLElement, views: CellView[]): void {
     const cell = document.createElement("div");
     cell.classList.add("cell");
     cell.setAttribute("role", "gridcell");
+    const notes = noteDigits(view.notes);
+    const notesText =
+      notes.length > 0 ? `, anotaciones ${notes.join(", ")}` : "";
     cell.setAttribute(
       "aria-label",
-      `Fila ${view.row + 1}, columna ${view.column + 1}${view.value ? ", " + view.value : ""}`
+      `Fila ${view.row + 1}, columna ${view.column + 1}${
+        view.value ? `, ${view.value}` : ""
+      }${notesText}`
     );
     // A state attribute is only present when the state holds: an empty,
     // unselected cell carries no `data-*` state at all (SPEC-003 RF-11).
@@ -63,8 +108,19 @@ export function renderBoard(container: HTMLElement, views: CellView[]): void {
     cell.dataset.col = String(view.column);
     cell.dataset.block = String(view.block);
     cell.tabIndex = view.selected || (!hasSelection && view.index === 0) ? 0 : -1;
+    // The value and the notes are different things and live in different
+    // elements: the value of a cell and the candidates marked on it are not
+    // the same information, and a cell that shows one must not look like it
+    // shows the other.
     if (view.value !== 0) {
-      cell.textContent = String(view.value);
+      const value = document.createElement('span');
+      value.className = 'cell-value';
+      value.textContent = String(view.value);
+      cell.appendChild(value);
+    } else if (view.notes !== 0) {
+      // A filled cell shows its value and hides its notes; the notes come
+      // back when the value is cleared.
+      renderNoteGrid(cell, view.notes);
     }
     // Row-major placement: a cell belongs to the container of its own row.
     rows[view.row].appendChild(cell);

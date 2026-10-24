@@ -46,12 +46,15 @@ y en que el motor sea correcto, no en la cantidad de modos.
 11. **Instalable**: add-to-home-screen con icono propio, sin barra de Safari, y
    **funciona sin conexion**.
 12. **Estado extensible**: el diseno del estado tiene que permitir agregar deshacer,
-    notas por celda y guardado de partida **sin reescribirlo**.
+    notas por celda y guardado de partida **sin reescribirlo**. Las notas por celda
+    ya se agregaron (2026-10-24) y la promesa se cumplio: el nucleo no se reescribio.
+    Quedan el deshacer y el resto del guardado.
 
 ## No-objetivos de la v1
 
 - Hints que explican la tecnica.
-- Notas por celda y modo de anotaciones.
+- Notas por celda y modo de anotaciones. **(Agregado el 2026-10-24, a pedido de
+  Gonzo: entra en la v1. Ver SPEC-007.)**
 - Deshacer/rehacer.
 - Estadisticas, records, ranking, racha.
 - Cuentas, multijugador, backend, telemetria, anuncios, pagos.

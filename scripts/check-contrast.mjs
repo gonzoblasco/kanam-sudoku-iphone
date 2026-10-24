@@ -101,6 +101,7 @@ const PAIRS = [
   { label: 'text on column highlight', fg: 'text', bg: 'highlight-column', min: AA_BODY },
   { label: 'text on block highlight', fg: 'text', bg: 'highlight-block', min: AA_BODY },
   { label: 'text on same-digit highlight', fg: 'text', bg: 'highlight-same', min: AA_BODY },
+  { label: 'note digit on background', fg: 'note-color', bg: 'bg', min: AA_BODY },
 ];
 
 let failures = 0;
