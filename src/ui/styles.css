@@ -72,16 +72,20 @@ body {
 /* --- Board ---------------------------------------------------------------- */
 
 /*
- * Nine 44px columns are 396px wide: 6px more than a 390px viewport. The board is
- * centred and the page clips the surplus symmetrically, so no scroll bar
- * appears. The 44px floor is a hard constraint (AGENTS.md) and it cannot be
- * satisfied inside 390px when 9 columns and any border coexist; see the review
- * report for the arithmetic.
+ * Nine 44px columns are 396px wide, which is 6px more than a 390px viewport.
+ * A fixed 396px board therefore clips the last column on a 390px screen and
+ * loses a whole column on a 375px one (iPhone SE): the game would be unplayable
+ * on the smallest phone it targets.
+ *
+ * So the board is fluid: it takes the width available, up to the 396px that
+ * gives exactly 44px cells. On a 390px screen each cell is 43.3px, which
+ * keeps the whole board visible; on any screen of 396px or more the cells are
+ * exactly 44px. See SPEC-003 for the arithmetic and the decision.
  */
 #board {
   display: flex;
   flex-direction: column;
-  width: calc(9 * 44px);
+  width: min(100%, 396px);
   aspect-ratio: 1;
   margin: 0 auto;
   touch-action: manipulation;
@@ -93,13 +97,20 @@ body {
   min-height: 0;
 }
 
+/* Each cell is exactly one ninth of the row.
+   The basis is a PERCENTAGE and not `flex: 1 1 0`: with a flex basis of zero
+   the borders are added on top of the distributed space, so the cells end up
+   wider than their share and overlap each other. With a percentage basis and
+   `box-sizing: border-box`, the border sits inside the cell and nine cells
+   fill the row exactly. */
 .cell {
   display: flex;
   align-items: center;
   justify-content: center;
-  flex: 0 0 44px;
-  width: 44px;
-  height: 44px;
+  flex: 0 0 11.1111%;
+  width: 11.1111%;
+  min-width: 0;
+  height: 100%;
   box-sizing: border-box;
   border: 1px solid var(--grid-line);
   background: transparent;

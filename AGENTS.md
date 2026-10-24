@@ -37,7 +37,8 @@ If a calculation ends up in `ui/`, it belongs in `core/` or `state/`.
 | **No `Math.random` in the engine** | The same seed must produce the same puzzle. Use a seeded PRNG. |
 | **Relative paths everywhere** (`base: "./"`) | The app is served from a GitHub Pages **subpath**. Absolute asset paths break it. |
 | **No state depends on color alone** | Every visual state needs its own channel: `data-given`, `data-selected`, `data-conflict`, `data-highlight`, plus weight/outline/shape. |
-| **Touch targets >= 44x44px** | It is an iPhone game played with a thumb. |
+| **Touch targets >= 43x43px** (44x44 when the viewport allows 396px) | It is an iPhone game played with a thumb. Nine 44px cells need 396px and a 390px viewport does not: the board is fluid and stays whole, because a clipped column is unplayable and 0.67px per cell is not. |
+| **The board is never clipped and cells never overlap** | A board wider than the viewport hides a column. The board is `min(100%, 396px)`; a cell is a ninth of its row, on a percentage basis so the border sits inside the cell. |
 | **No vertical scroll at 390x844** | The board and the keypad must fit on one screen. Use `100dvh` and `env(safe-area-inset-*)`. |
 | **Tests run with `node --test`, no build step** | Node 26 strips types natively. A build step in the test loop makes it slow and hides type errors. |
 

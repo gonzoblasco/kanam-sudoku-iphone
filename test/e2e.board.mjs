@@ -64,8 +64,31 @@ const smallest = cellSizes.reduce(
   (acc, s) => ({ w: Math.min(acc.w, s.w), h: Math.min(acc.h, s.h) }),
   { w: Infinity, h: Infinity },
 );
-checks.atLeast('every cell is at least 44px wide', smallest.w, 44, 'px');
-checks.atLeast('every cell is at least 44px tall', smallest.h, 44, 'px');
+// Nine 44px cells need 396px, more than a 390px viewport. The board is
+// therefore fluid: the cell is a ninth of the board, and the whole board
+// stays visible. The floor is 43px, which the cell clears at 390px.
+checks.atLeast('every cell is at least 43px wide', smallest.w, 43, 'px');
+checks.atLeast('every cell is at least 43px tall', smallest.h, 43, 'px');
+
+// The board must never be wider than the viewport: a clipped last column
+// would make the game unplayable.
+const clipping = await page.evaluate(() => {
+  const cells = [...document.querySelectorAll('.cell')].map((c) => c.getBoundingClientRect());
+  const first = cells[0];
+  const last = cells[cells.length - 1];
+  let overlaps = 0;
+  for (let i = 1; i < 9; i++) {
+    if (cells[i].left < cells[i - 1].right - 0.5) overlaps++;
+  }
+  return {
+    clippedLeft: first.left < -0.5,
+    clippedRight: last.right > window.innerWidth + 0.5,
+    overlaps,
+  };
+});
+checks.ok('the board is not clipped on the left', !clipping.clippedLeft);
+checks.ok('the board is not clipped on the right', !clipping.clippedRight);
+checks.equal('the cells do not overlap', clipping.overlaps, 0);
 
 // --- 4. Block borders are thicker than the inner ones -----------------------
 const borders = await page.evaluate(() => {

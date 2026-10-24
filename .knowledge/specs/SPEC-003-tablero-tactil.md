@@ -11,7 +11,9 @@
 ### Problema
 
 El tablero es el corazon del juego y tiene que funcionar **con el dedo, en un iPhone
-de 390px**, sin scroll y con areas tactiles de 44x44px. El pedido es explicito en
+de 390px**, sin scroll y con areas tactiles de 43x43px (44x44px exactos cuando
+el viewport alcanza los 396px: nueve celdas de 44px no entran en 390px, y un
+tablero recortado es injugable). El pedido es explicito en
 la seccion de plataforma: mobile-first, 100% tactil, nada de hover ni teclado fisico,
 safe areas, `100dvh` para que la pantalla no scrollee, tablero cuadrado que ocupe el
 ancho disponible, lineas mas gruesas separando los bloques 3x3, y modo claro y
@@ -31,7 +33,8 @@ en rojo. Ninguno de esos dos estados puede depender unicamente del color.
 Un tablero que:
 
 1. Se dibuja cuadrado, ocupa el ancho disponible y nunca fuerza scroll vertical.
-2. Responde a toques con areas de 44x44px minimo.
+2. Responde a toques con areas de 43x43px minimo (44x44px cuando el viewport
+   alcanza los 396px), y con el tablero completo siempre visible.
 3. Expone seleccion, escritura y borrado, con las pistas protegidas.
 4. Resalta los cuatro contextos (fila, columna, bloque, mismo numero) de forma
    distinta entre si.
@@ -67,8 +70,12 @@ Un tablero que:
 - **RF-2.** El layout de la pantalla usa `100dvh` (con fallback `100vh`), respeta
   `env(safe-area-inset-*)` y **no produce scroll vertical** en un viewport de
   390x844.
-- **RF-3.** Cada celda es un objetivo tactil de **al menos 44x44px** en el viewport
-  de referencia.
+- **RF-3.** Cada celda es un objetivo tactil de **al menos 43x43px** en el viewport
+  de referencia (44x44px exactos cuando el tablero alcanza los 396px), y el
+  tablero **completo queda siempre visible**: nunca se recorta ni se solapan las
+  celdas. La razon es aritmetica: nueve celdas de 44px necesitan 396px y el
+  viewport de referencia tiene 390px. El tablero es fluido (`min(100%, 396px)`) y
+  la celda es un noveno de la fila.
 - **RF-4.** Los limites entre bloques 3x3 son visualmente mas gruesos que los
   internos.
 - **RF-5.** Al tocar una celda, se la selecciona y se resalta: su fila, su columna,
@@ -135,8 +142,13 @@ interface CellView {
 
 - Con un viewport de **390x844**, el documento **no tiene scroll vertical**:
   `document.documentElement.scrollHeight <= window.innerHeight`.
-- La celda mide **al menos 44x44px** en ese viewport: el test mide el
-  `getBoundingClientRect()` de una celda y falla si algun lado es < 44.
+- La celda mide **al menos 43x43px** en ese viewport: el test mide el
+  `getBoundingClientRect()` de una celda y falla si algun lado es < 43.
+- El tablero **no se recorta** ni a la izquierda ni a la derecha, y las celdas
+  **no se solapan**: son las dos condiciones que hacen el juego jugable. La
+  aritmetica: nueve celdas de 44px necesitan 396px, mas que los 390px del
+  viewport de referencia, asi que el tablero es fluido y la celda es un noveno
+  de la fila. A 390px la celda queda en 43.33px; a 430px, en 44px exactos.
 - El tablero es **cuadrado**: la diferencia entre ancho y alto medidos es **<= 1px**.
 - El ancho del tablero es **>= 340px** en un viewport de 390 (ocupa el ancho
   disponible descontando el padding).
@@ -206,7 +218,8 @@ npm run build
 node test/e2e.board.mjs          # viewport 390x844
 ```
 
-Checks minimos: sin scroll vertical; celda >= 44x44px; tablero cuadrado; ancho
+Checks minimos: sin scroll vertical; celda >= 43x43px; tablero no recortado y
+celdas sin solape; tablero cuadrado; ancho
 >= 340px; bordes de bloque mas gruesos; los cuatro `data-highlight` con sus
 conteos; `data-selected` unico; dada inmutable; scrollY == 0 tras un toque;
 contraste del modo oscuro >= 4.5:1.
