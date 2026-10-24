@@ -6,7 +6,10 @@
  */
 import { launchBrowser } from './_playwright.mjs';
 import { resolve } from 'node:path';
-import { existsSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
+import { execFileSync } from 'node:child_process';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
 import { Checks, pngSize, readManifest, serveDirectory } from './_harness.mjs';
 
 const DIST = resolve(process.cwd(), 'dist');
@@ -150,15 +153,45 @@ checks.ok(
   'no version pattern found',
 );
 
+// The version must CHANGE with the content, not just look like a hash. Emit
+// two workers for two throwaway builds that differ in one file.
+const versionOf = (assets) => {
+  const dir = mkdtempSync(join(tmpdir(), 'kanam-sw-'));
+  writeFileSync(join(dir, 'index.html'), '<!doctype html><title>a</title>');
+  for (const [name, content] of Object.entries(assets)) {
+    writeFileSync(join(dir, name), content);
+  }
+  execFileSync(process.execPath, [resolve('scripts/gen-sw.mjs')], {
+    env: { ...process.env, DIST_DIR: dir },
+    stdio: 'ignore',
+  });
+  const source = readFileSync(join(dir, 'sw.js'), 'utf8');
+  rmSync(dir, { recursive: true, force: true });
+  return /kanam-sudoku-cache-v([0-9a-f]{8})/.exec(source)?.[1] ?? null;
+};
+const versionA = versionOf({ 'app.js': 'console.log(1);' });
+const versionB = versionOf({ 'app.js': 'console.log(2);' });
+const versionARepeat = versionOf({ 'app.js': 'console.log(1);' });
+checks.ok('the cache version changes with the content', versionA !== versionB, `${versionA} vs ${versionB}`);
+checks.ok('the cache version is stable for the same content', versionA === versionARepeat, `${versionA} vs ${versionARepeat}`);
+
 // --- 6. The app works under a subpath (the GitHub Pages layout) ------------
 const subServer = await serveDirectory(DIST, '/kanam-sudoku-iphone');
 const subPage = await context.newPage();
 const subErrors = [];
+const subConsoleErrors = [];
 subPage.on('pageerror', (err) => subErrors.push(String(err)));
+subPage.on('console', (msg) => {
+  if (msg.type() === 'error') subConsoleErrors.push(msg.text());
+});
 await subPage.goto(`${subServer.base}/index.html`);
 await subPage.waitForSelector('#menu', { timeout: 15000 });
+// The menu is the first screen, so there are no cells yet: the app "loads"
+// when it can start a game and draw the board.
+await subPage.click('button:has-text("Fácil")');
+await subPage.waitForSelector('.cell', { timeout: 20000 });
 const subCells = await subPage.evaluate(() => document.querySelectorAll('.cell').length);
-checks.ok('the app loads under a subpath', subCells === 0 || subCells === 81);
+checks.equal('the app plays under a subpath', subCells, 81);
 const subManifest = await subPage.evaluate(
   () => document.querySelector('link[rel="manifest"]')?.getAttribute('href') ?? '',
 );
@@ -167,7 +200,32 @@ checks.ok(
   subManifest.startsWith('./'),
   `href is ${subManifest}`,
 );
+const subScope = await subPage.evaluate(async () => {
+  const registration = await navigator.serviceWorker.ready;
+  return registration.scope;
+});
+checks.ok(
+  'the service worker registers with the subpath scope',
+  subScope.includes('/kanam-sudoku-iphone/'),
+  `scope is ${subScope}`,
+);
+// Offline under the subpath is the GitHub Pages case: a cold navigation has to
+// hit the precached ./index.html, not the domain root.
+await subPage.context().setOffline(true);
+await subPage.reload();
+await subPage.waitForSelector('#menu', { timeout: 15000 });
+const subOfflineCells = await subPage.evaluate(async () => {
+  const button = [...document.querySelectorAll('#menu button')].find(
+    (b) => b.textContent?.trim() === 'Fácil',
+  );
+  if (button) button.click();
+  await new Promise((resolve) => setTimeout(resolve, 1500));
+  return document.querySelectorAll('.cell').length;
+});
+checks.equal('the app loads and plays offline under a subpath', subOfflineCells, 81);
+await subPage.context().setOffline(false);
 checks.equal('no page errors under a subpath', subErrors.length, 0, subErrors.join(' | '));
+checks.equal('no console errors under a subpath', subConsoleErrors.length, 0, subConsoleErrors.join(' | '));
 
 // --- 7. The menu shows the three levels -------------------------------------
 const menuButtons = await page.evaluate(() =>
@@ -176,9 +234,65 @@ const menuButtons = await page.evaluate(() =>
 checks.ok('the menu offers Facil', menuButtons.some((t) => t === 'Fácil'));
 checks.ok('the menu offers Medio', menuButtons.some((t) => t === 'Medio'));
 checks.ok('the menu offers Dificil', menuButtons.some((t) => t === 'Difícil'));
-checks.ok('the menu offers Continuar', menuButtons.some((t) => t === 'Continuar'));
+checks.ok(
+  'the menu offers Continuar',
+  menuButtons.some((t) => t === 'Continuar' || t?.startsWith('Continuar')),
+  `buttons: ${JSON.stringify(menuButtons)}`,
+);
 
-// --- 8. No console errors ---------------------------------------------------
+// --- 8. "Continuar" restores the saved game without generating --------------
+// SPEC-006 RF-15: the restored grid must be the one that was saved, cell by
+// cell, and no new puzzle may be generated.
+{
+  const restoreContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const restorePage = await restoreContext.newPage();
+  await restorePage.goto(`${server.base}/index.html`);
+  await restorePage.click('button:has-text("Medio")');
+  await restorePage.waitForSelector('.cell');
+  // Make a move, so the restored board is provably not a fresh puzzle.
+  const playIndex = await restorePage.evaluate(() => {
+    const cell = [...document.querySelectorAll('.cell')].find((c) => c.dataset.given !== 'true');
+    return cell ? Number(cell.dataset.index) : null;
+  });
+  checks.ok('there is a playable cell for the restore check', playIndex !== null);
+  await restorePage.click(`.cell[data-index="${playIndex}"]`);
+  await restorePage.click('button[data-digit="7"]');
+  const savedBefore = await restorePage.evaluate(() =>
+    [...document.querySelectorAll('.cell')].map((c) => `${c.dataset.index}:${c.textContent}`).join('|'),
+  );
+
+  await restorePage.reload();
+  await restorePage.waitForSelector('#menu');
+  const continueLabel = await restorePage.evaluate(
+    () =>
+      [...document.querySelectorAll('#menu button')]
+        .map((b) => b.textContent?.trim())
+        .find((t) => t?.startsWith('Continuar')) ?? null,
+  );
+  checks.ok(
+    'Continuar carries the level of the saved game',
+    continueLabel === 'Continuar (Medio)',
+    `label is ${continueLabel}`,
+  );
+  await restorePage.click('button:has-text("Continuar")');
+  await restorePage.waitForSelector('#board:not(.hidden)');
+  const savedAfter = await restorePage.evaluate(() =>
+    [...document.querySelectorAll('.cell')].map((c) => `${c.dataset.index}:${c.textContent}`).join('|'),
+  );
+  checks.equal('Continuar restores the exact saved grid', savedAfter, savedBefore);
+  const savedTime = await restorePage.evaluate(() => {
+    const raw = localStorage.getItem('kanam.sudoku.iphone.game');
+    return raw ? JSON.parse(raw).elapsedMs : null;
+  });
+  checks.ok(
+    'the restored game keeps its effective time',
+    typeof savedTime === 'number' && savedTime >= 0,
+    `elapsedMs is ${savedTime}`,
+  );
+  await restoreContext.close();
+}
+
+// --- 9. No console errors ---------------------------------------------------
 checks.equal('no console errors', consoleErrors.length, 0, consoleErrors.join(' | '));
 
 await browser.close();

@@ -5,7 +5,9 @@
   "scripts": {
     "test": "node --test test/",
     "typecheck": "tsc --noEmit",
+    "prebuild": "node scripts/generate-icons.mjs",
     "build": "vite build",
+    "postbuild": "node scripts/gen-sw.mjs",
     "dev": "vite",
     "e2e": "node test/e2e.board.mjs && node test/e2e.keypad.mjs && node test/e2e.pwa.mjs && node test/e2e.a11y.mjs",
     "icons": "node scripts/generate-icons.mjs",

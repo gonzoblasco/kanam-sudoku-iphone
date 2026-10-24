@@ -5,14 +5,22 @@
  * the exported helpers.
  */
 
-/** Return the mask for a single digit (1‑9). */
+/** Return the mask for a single digit (1-9). */
 export const bitFor = (digit: number): number => {
   // digit is in 1..9; shift by digit‑1
   return 1 << (digit - 1);
 };
 
-/** Alias for clarity. */
-export const maskOf = bitFor;
+/**
+ * Build the mask of one or more digits.
+ *
+ * `maskOf(3)` is the mask of the digit 3 and `maskOf(1, 3, 9)` the mask of the
+ * set {1, 3, 9}, which is the contract in `docs/architecture.md` §3.1. Keeping
+ * both signatures in one function means a caller never has to know which one
+ * it needs, and there is still exactly one place where a mask is built.
+ */
+export const maskOf = (...digits: number[]): number =>
+  digits.reduce((mask, digit) => mask | bitFor(digit), 0);
 
 /** Does the mask contain `digit`? */
 export const hasDigit = (mask: number, digit: number): boolean =>

@@ -77,6 +77,31 @@ checks.equal('the live region is polite', semantics.live, 'polite');
 checks.ok('the live region is visually hidden', semantics.liveHidden === true);
 checks.equal('every cell has an accessible name', semantics.labelledCells, 81);
 
+// --- Keyboard navigation --------------------------------------------------
+// The BRIEF promises a keyboard-navigable grid; SPEC-003 tolerates the keyboard
+// as an accessibility channel. The grid must be a single tab stop (roving
+// tabindex) and the arrows must move the selection.
+await page.click('.cell[data-index="0"]');
+const roving = await page.evaluate(() => ({
+  tabbable: [...document.querySelectorAll('.cell')].filter((c) => c.tabIndex === 0).length,
+}));
+checks.equal('the grid is a single tab stop', roving.tabbable, 1);
+await page.focus('.cell[data-selected="true"]');
+await page.keyboard.press('ArrowRight');
+const afterRight = await page.evaluate(() => ({
+  selected: [...document.querySelectorAll('[data-selected="true"]')].map((c) =>
+    Number(c.dataset.index),
+  ),
+  focused: Number(document.activeElement?.dataset?.index ?? -1),
+}));
+checks.equal('ArrowRight moves the selection', afterRight.selected[0], 1);
+checks.equal('the focus follows the selection', afterRight.focused, 1);
+await page.keyboard.press('ArrowUp');
+const afterUp = await page.evaluate(
+  () => Number(document.querySelector('[data-selected="true"]')?.dataset.index),
+);
+checks.equal('ArrowUp at the first row stays in place', afterUp, 1);
+
 await browser.close();
 server.close();
 checks.finish('e2e.a11y');

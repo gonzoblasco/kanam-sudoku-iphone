@@ -34,3 +34,21 @@ export function initMenu(
   container.appendChild(contBtn);
 }
 
+/**
+ * Label the "Continuar" action with the level of the game in progress.
+ *
+ * SPEC-006 RF-11 asks for the level next to "Continuar": two games of different
+ * levels are otherwise indistinguishable from the menu.
+ */
+export function setContinueLabel(
+  ui: { menuContainer: HTMLElement },
+  difficulty: "facil" | "medio" | "dificil" | null,
+): void {
+  const contBtn = ui.menuContainer.querySelector(
+    "button[data-action='continue']",
+  ) as HTMLButtonElement | null;
+  if (!contBtn) return;
+  const labels = { facil: "Fácil", medio: "Medio", dificil: "Difícil" } as const;
+  contBtn.textContent = difficulty ? `Continuar (${labels[difficulty]})` : "Continuar";
+}
+

@@ -15,7 +15,7 @@
  */
 import type { Candidates, Deduction } from './analysis.ts';
 import { CELLS_OF_UNIT, rowOf, colOf, blockOf } from './geometry.ts';
-import { digitsOf, hasDigit, maskOf } from './mask.ts';
+import { digitsOf, maskOf } from './mask.ts';
 
 export interface Technique {
   id: string;
@@ -27,6 +27,29 @@ export interface Technique {
 /** Does the cell still have the digit as a candidate? */
 const has = (c: Candidates, cell: number, digit: number): boolean =>
   (c[cell] & maskOf(digit)) !== 0;
+
+/**
+ * Remove duplicates from an elimination list.
+ *
+ * Overlapping units produce the same {cell, digit} more than once (a cell in
+ * both a row and a column of the pattern). The rater applies each entry
+ * separately, so a duplicate would be counted as two eliminations and inflate
+ * `steps`. `applyDeduction` is idempotent, so the puzzle is not affected: the
+ * count is.
+ */
+const uniqueEliminations = (
+  list: { cell: number; digit: number }[],
+): { cell: number; digit: number }[] => {
+  const seen = new Set<string>();
+  const out: { cell: number; digit: number }[] = [];
+  for (const entry of list) {
+    const key = `${entry.cell}:${entry.digit}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    out.push(entry);
+  }
+  return out;
+};
 
 /**
  * Build the elimination list for a set of cells and digits.
@@ -44,20 +67,8 @@ const buildElimination = (
       if ((c[cell] & maskOf(d)) !== 0) out.push({ cell, digit: d });
     }
   }
-  return out;
+  return uniqueEliminations(out);
 };
-
-/** Candidates of a digit inside a row, as column indices. */
-const colsInRow = (c: Candidates, row: number, digit: number): number[] =>
-  CELLS_OF_UNIT[row].filter((cell) => has(c, cell, digit)).map(colOf);
-
-/** Candidates of a digit inside a column, as row indices. */
-const rowsInCol = (c: Candidates, col: number, digit: number): number[] =>
-  CELLS_OF_UNIT[9 + col].filter((cell) => has(c, cell, digit)).map(rowOf);
-
-/** Set intersection of two number arrays. */
-const intersect = (a: number[], b: number[]): number[] =>
-  a.filter((x) => b.includes(x));
 
 // ---------------------------------------------------------------------------
 // Tier 1: singles
@@ -266,38 +277,76 @@ const findLockedCandidatesClaiming = (c: Candidates): Deduction | null => {
   return null;
 };
 
+/**
+ * Positions of `digit` inside a row, as {cell, col}.
+ */
+const rowPositions = (c: Candidates, row: number, digit: number): { cell: number; col: number }[] =>
+  CELLS_OF_UNIT[row]
+    .filter((cell) => has(c, cell, digit))
+    .map((cell) => ({ cell, col: colOf(cell) }));
+
+const colPositions = (c: Candidates, col: number, digit: number): { cell: number; row: number }[] =>
+  CELLS_OF_UNIT[9 + col]
+    .filter((cell) => has(c, cell, digit))
+    .map((cell) => ({ cell, row: rowOf(cell) }));
+
+const sameNumbers = (a: number[], b: number[]): boolean => {
+  const sa = [...new Set(a)].sort((x, y) => x - y);
+  const sb = [...new Set(b)].sort((x, y) => x - y);
+  return sa.length === sb.length && sa.every((v, i) => v === sb[i]);
+};
+
+/**
+ * X-Wing.
+ *
+ * The digit is confined to the SAME two columns in two rows (or the same two
+ * rows in two columns). Then each of those columns must take the digit once,
+ * so the digit can be removed from the rest of those columns.
+ *
+ * The elimination is OUTSIDE the pattern. Removing the digit from the four
+ * corners of the rectangle would delete the only cells that can hold it: that
+ * is not a deduction, it is destroying the puzzle.
+ */
 const findXWing = (c: Candidates): Deduction | null => {
-  // A digit confined to two rows and two columns, shared by two digits.
-  for (let r1 = 0; r1 < 9; r1++) {
-    for (let r2 = r1 + 1; r2 < 9; r2++) {
-      for (let c1 = 0; c1 < 9; c1++) {
-        for (let c2 = c1 + 1; c2 < 9; c2++) {
-          const cells = [r1 * 9 + c1, r1 * 9 + c2, r2 * 9 + c1, r2 * 9 + c2];
-          const confined: number[] = [];
-          for (let d = 1; d <= 9; d++) {
-            const inRows = intersect(colsInRow(c, r1, d), colsInRow(c, r2, d));
-            const inCols = intersect(rowsInCol(c, c1, d), rowsInCol(c, c2, d));
-            if (
-              inRows.length === 2 &&
-              inRows.includes(c1) &&
-              inRows.includes(c2) &&
-              inCols.length === 2 &&
-              inCols.includes(r1) &&
-              inCols.includes(r2)
-            ) {
-              confined.push(d);
-            }
-          }
-          if (confined.length < 2) continue;
-          const [d1, d2] = confined;
-          // Each digit keeps only its own position in the rectangle.
-          const eliminate = [
-            { cell: r1 * 9 + c1, digit: d1 },
-            { cell: r2 * 9 + c2, digit: d1 },
-            { cell: r1 * 9 + c2, digit: d2 },
-            { cell: r2 * 9 + c1, digit: d2 },
-          ].filter((e) => (c[e.cell] & maskOf(e.digit)) !== 0);
-          if (eliminate.length === 0) continue;
+  for (let digit = 1; digit <= 9; digit++) {
+    // Rows: two rows whose candidate columns are the same pair.
+    for (let r1 = 0; r1 < 9; r1++) {
+      const p1 = rowPositions(c, r1, digit);
+      if (p1.length !== 2) continue;
+      for (let r2 = r1 + 1; r2 < 9; r2++) {
+        const p2 = rowPositions(c, r2, digit);
+        if (p2.length !== 2) continue;
+        const cols = p1.map((p) => p.col);
+        if (!sameNumbers(cols, p2.map((p) => p.col))) continue;
+        const eliminate = buildElimination(
+          c,
+          cols
+            .flatMap((col) => CELLS_OF_UNIT[9 + col])
+            .filter((cell) => rowOf(cell) !== r1 && rowOf(cell) !== r2),
+          [digit],
+        );
+        if (eliminate.length > 0) {
+          return { techniqueId: 'x_wing', tier: 3, cell: -1, digit: -1, eliminate };
+        }
+      }
+    }
+    // Columns: the mirror case.
+    for (let c1 = 0; c1 < 9; c1++) {
+      const p1 = colPositions(c, c1, digit);
+      if (p1.length !== 2) continue;
+      for (let c2 = c1 + 1; c2 < 9; c2++) {
+        const p2 = colPositions(c, c2, digit);
+        if (p2.length !== 2) continue;
+        const rows = p1.map((p) => p.row);
+        if (!sameNumbers(rows, p2.map((p) => p.row))) continue;
+        const eliminate = buildElimination(
+          c,
+          rows
+            .flatMap((row) => CELLS_OF_UNIT[row])
+            .filter((cell) => colOf(cell) !== c1 && colOf(cell) !== c2),
+          [digit],
+        );
+        if (eliminate.length > 0) {
           return { techniqueId: 'x_wing', tier: 3, cell: -1, digit: -1, eliminate };
         }
       }
@@ -310,89 +359,123 @@ const findXWing = (c: Candidates): Deduction | null => {
 // Tier 4: swordfish and unique rectangle
 // ---------------------------------------------------------------------------
 
+/**
+ * Swordfish.
+ *
+ * The digit is confined to three columns across three rows (or three rows
+ * across three columns). One placement per row over three columns means one
+ * placement per column, which is what justifies removing the digit from the
+ * OTHER rows inside those three columns.
+ *
+ * The previous implementation tested the intersection of the three rows (a
+ * much weaker condition) and then eliminated the digit from the pattern's own
+ * rows, which can delete the digit from the only cells able to hold it.
+ */
 const findSwordfish = (c: Candidates): Deduction | null => {
-  // Three digits confined to the same three rows and three columns.
-  const rowTriples: number[][] = [];
+  const triples: number[][] = [];
   for (let a = 0; a < 9; a++) {
     for (let b = a + 1; b < 9; b++) {
-      for (let d = b + 1; d < 9; d++) rowTriples.push([a, b, d]);
+      for (let d = b + 1; d < 9; d++) triples.push([a, b, d]);
     }
   }
-  for (const rows of rowTriples) {
-    const confined = new Map<string, number[]>();
-    for (let digit = 1; digit <= 9; digit++) {
-      const cols = intersect(
-        intersect(colsInRow(c, rows[0], digit), colsInRow(c, rows[1], digit)),
-        colsInRow(c, rows[2], digit),
-      );
+
+  for (let digit = 1; digit <= 9; digit++) {
+    for (const rows of triples) {
+      const positions = rows.map((row) => rowPositions(c, row, digit));
+      // Each row needs 2 or 3 possible columns: 0 means the digit is already
+      // placed in that row, more than 3 means the row is not confined.
+      if (positions.some((p) => p.length < 2 || p.length > 3)) continue;
+      const cols = [...new Set(positions.flat().map((p) => p.col))];
       if (cols.length !== 3) continue;
-      const key = [...cols].sort((x, y) => x - y).join(',');
-      const list = confined.get(key) ?? [];
-      list.push(digit);
-      confined.set(key, list);
-    }
-    for (const [, digits] of confined) {
-      if (digits.length < 3) continue;
-      const [d1, d2, d3] = digits;
-      const eliminate: { cell: number; digit: number }[] = [];
-      for (const digit of [d1, d2, d3]) {
-        for (const row of rows) {
-          const inside = CELLS_OF_UNIT[row].filter((cell) =>
-            intersect(colsInRow(c, row, digit), [colOf(cell)]).length === 1,
-          );
-          for (const cell of inside) {
-            const col = colOf(cell);
-            const cols = intersect(
-              intersect(colsInRow(c, rows[0], digit), colsInRow(c, rows[1], digit)),
-              colsInRow(c, rows[2], digit),
-            );
-            if (cols.includes(col)) continue;
-            if ((c[cell] & maskOf(digit)) !== 0) eliminate.push({ cell, digit });
-          }
-        }
+      const eliminate = buildElimination(
+        c,
+        cols
+          .flatMap((col) => CELLS_OF_UNIT[9 + col])
+          .filter((cell) => !rows.includes(rowOf(cell))),
+        [digit],
+      );
+      if (eliminate.length > 0) {
+        return { techniqueId: 'swordfish', tier: 4, cell: -1, digit: -1, eliminate };
       }
-      if (eliminate.length === 0) continue;
-      return { techniqueId: 'swordfish', tier: 4, cell: -1, digit: -1, eliminate };
+    }
+    for (const cols of triples) {
+      const positions = cols.map((col) => colPositions(c, col, digit));
+      if (positions.some((p) => p.length < 2 || p.length > 3)) continue;
+      const rows = [...new Set(positions.flat().map((p) => p.row))];
+      if (rows.length !== 3) continue;
+      const eliminate = buildElimination(
+        c,
+        rows
+          .flatMap((row) => CELLS_OF_UNIT[row])
+          .filter((cell) => !cols.includes(colOf(cell))),
+        [digit],
+      );
+      if (eliminate.length > 0) {
+        return { techniqueId: 'swordfish', tier: 4, cell: -1, digit: -1, eliminate };
+      }
     }
   }
   return null;
 };
 
+/**
+ * Unique Rectangle, Type 1.
+ *
+ * A rectangle across exactly two blocks with three corners holding exactly the
+ * same two digits and the fourth corner holding those two digits plus extras.
+ * If the fourth corner were one of the pair, the four corners would form a
+ * deadly pattern with two solutions, which a valid puzzle cannot have. So the
+ * pair can be removed from the fourth corner.
+ *
+ * The previous implementation removed an unrelated third digit from the rest
+ * of both blocks, which is not a deduction at all.
+ */
 const findUniqueRectangle = (c: Candidates): Deduction | null => {
-  // Four cells forming a rectangle across two blocks, sharing only two digits.
+  const bivalue = (cell: number): number[] | null => {
+    const mask = c[cell];
+    if (mask === 0) return null;
+    const digits = digitsOf(mask);
+    return digits.length === 2 ? digits : null;
+  };
+  const band = (row: number): number => Math.floor(row / 3);
+  const stack = (col: number): number => Math.floor(col / 3);
+
   for (let r1 = 0; r1 < 9; r1++) {
     for (let r2 = r1 + 1; r2 < 9; r2++) {
       for (let c1 = 0; c1 < 9; c1++) {
         for (let c2 = c1 + 1; c2 < 9; c2++) {
-          const top = [r1 * 9 + c1, r1 * 9 + c2];
-          const bottom = [r2 * 9 + c1, r2 * 9 + c2];
-          const topBlock = blockOf(top[0]);
-          const bottomBlock = blockOf(bottom[0]);
-          if (topBlock === bottomBlock) continue;
-          if (blockOf(top[1]) !== topBlock || blockOf(bottom[1]) !== bottomBlock) continue;
-          const union = new Set<number>();
-          for (const cell of [...top, ...bottom]) {
-            if (c[cell] === 0) continue;
-            for (const d of digitsOf(c[cell])) union.add(d);
-          }
-          if (union.size !== 2) continue;
-          const [d1, d2] = [...union];
-          const third = [1, 2, 3, 4, 5, 6, 7, 8, 9].find(
-            (d) => d !== d1 && d !== d2,
-          );
-          if (third === undefined) continue;
-          const rest = [
-            ...CELLS_OF_UNIT[18 + topBlock].filter((cell) => !top.includes(cell)),
-            ...CELLS_OF_UNIT[18 + bottomBlock].filter((cell) => !bottom.includes(cell)),
-          ];
-          const eliminate = buildElimination(c, rest, [third]);
-          if (eliminate.length === 0) continue;
+          // The four corners must sit in EXACTLY two boxes, or the swap that
+          // defines the deadly pattern is not a valid second solution.
+          const sameBand = band(r1) === band(r2);
+          const sameStack = stack(c1) === stack(c2);
+          if (sameBand === sameStack) continue;
+
+          const corners = [r1 * 9 + c1, r1 * 9 + c2, r2 * 9 + c1, r2 * 9 + c2];
+          const pairs = corners.map(bivalue);
+          const withPair = pairs
+            .map((pair, index) => ({ pair, index }))
+            .filter((entry): entry is { pair: number[]; index: number } => entry.pair !== null);
+          if (withPair.length !== 3) continue;
+
+          const [d1, d2] = withPair[0].pair;
+          if (!withPair.every((entry) => sameNumbers(entry.pair, [d1, d2]))) continue;
+
+          const extraCell = corners.find((_, index) => !withPair.some((p) => p.index === index));
+          if (extraCell === undefined) continue;
+          if (!has(c, extraCell, d1) || !has(c, extraCell, d2)) continue;
+          // The fourth corner must carry MORE than the pair: if it were the
+          // pair too, the puzzle would already have two solutions.
+          if (digitsOf(c[extraCell]).length <= 2) continue;
+
           return {
             techniqueId: 'unique_rectangle',
             tier: 4,
             cell: -1,
             digit: -1,
-            eliminate,
+            eliminate: [
+              { cell: extraCell, digit: d1 },
+              { cell: extraCell, digit: d2 },
+            ],
           };
         }
       }
@@ -449,17 +532,18 @@ export const TECHNIQUES: Technique[] = [
  *
  * `maxTier` caps the difficulty of the techniques used, which is how the
  * generator asks "can this puzzle be solved with only easy techniques?".
- * `skip` holds the ids of techniques that were already tried and produced no
- * progress, so a broken technique cannot spin the rater forever.
+ *
+ * Termination does not rely on the caller: every deduction the catalogue
+ * returns either places a digit or removes at least one live candidate
+ * (`verifyElimination` rejects a no-op), so the candidate set strictly shrinks
+ * and the loop cannot spin. The rater still keeps a step backstop.
  */
 export const findDeduction = (
   candidates: Candidates,
   maxTier?: number,
-  skip?: Set<string>,
 ): Deduction | null => {
   for (const tech of TECHNIQUES) {
     if (maxTier !== undefined && tech.tier > maxTier) continue;
-    if (skip?.has(tech.id)) continue;
     const d = tech.detect(candidates);
     if (!d) continue;
     if (!tech.verify(candidates, d)) continue;

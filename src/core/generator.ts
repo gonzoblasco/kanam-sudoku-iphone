@@ -9,7 +9,8 @@
  *      still has a UNIQUE solution (`countSolutions(puzzle, 2) === 1`).
  *   4. Rate the puzzle once, with the technique catalogue.
  *   5. If the measured level is the requested one, return it.
- *   6. Otherwise restart with a derived seed, up to `maxAttempts` times.
+ *   6. Otherwise try another candidate board, up to `maxAttempts` times, all
+ *      drawn from the same seeded stream (reproducible, decorrelated).
  *   7. If the attempts run out, return the last candidate with its REAL rating
  *      and `matched: false`. The generator never mislabels a level.
  */
@@ -19,6 +20,14 @@ import { ratePuzzle, DIFFICULTY_MAX_TIER } from './rater.ts';
 import type { Difficulty, Rating } from './rater.ts';
 import { bitFor } from './mask.ts';
 import { PEERS } from './geometry.ts';
+
+/** splitmix32 finalizer: decorrelates a seed from its neighbours. */
+export const mix32 = (value: number): number => {
+  let z = value >>> 0;
+  z = Math.imul(z ^ (z >>> 16), 0x21f0aaad) >>> 0;
+  z = Math.imul(z ^ (z >>> 15), 0x735a2d97) >>> 0;
+  return (z ^ (z >>> 15)) >>> 0;
+};
 
 /** mulberry32 PRNG: small, fast, and fully determined by its seed. */
 export const mulberry32 = (a: number): (() => number) => {
@@ -124,9 +133,22 @@ const generateFullSolution = (rng: () => number): Grid => {
 };
 
 export interface GenerateResult {
-  puzzle: Grid;
+  puzzle: Puzzle;
   rating: Rating;
   matched: boolean;
+}
+
+/**
+ * A puzzle is the grid of clues PLUS the solution the generator verified.
+ *
+ * The solution is part of the contract (docs/data-model.md §1.2): without it a
+ * caller cannot check that a completed board is the right one, and the
+ * uniqueness guarantee would be an unverifiable claim.
+ */
+export interface Puzzle {
+  grid: Grid;
+  solution: Grid;
+  seed: number;
 }
 
 export interface GenerateOptions {
@@ -145,6 +167,15 @@ export const generatePuzzle = (
   opts: GenerateOptions = {},
 ): GenerateResult => {
   const maxAttempts = opts.maxAttempts ?? 60;
+  if (
+    difficulty !== 'facil' &&
+    difficulty !== 'medio' &&
+    difficulty !== 'dificil'
+  ) {
+    // Not a default level: an unknown level is a caller error, and silently
+    // treating it as "facil" would produce a puzzle labelled with a lie.
+    throw new Error(`unknown difficulty: ${String(difficulty)}`);
+  }
   if (!Number.isInteger(maxAttempts) || maxAttempts <= 0) {
     throw new Error('maxAttempts must be a positive integer');
   }
@@ -155,14 +186,18 @@ export const generatePuzzle = (
   const baseSeed = opts.seed >>> 0;
   const maxTier = DIFFICULTY_MAX_TIER[difficulty];
 
-  let lastPuzzle: Grid | null = null;
+  let lastPuzzle: Puzzle | null = null;
   let lastRating: Rating | null = null;
 
-  for (let attempt = 0; attempt < maxAttempts; attempt++) {
-    // Golden-ratio stride so consecutive attempts explore different puzzles.
-    const derivedSeed = (baseSeed + Math.imul(attempt + 1, 0x9e3779b9)) >>> 0;
-    const rng = mulberry32(derivedSeed);
+  // ONE stream for the whole run. Re-seeding every attempt as
+  // `base + attempt * stride` feeds mulberry32 an arithmetic sequence, which is
+  // exactly the generator's own state update: consecutive attempts then walk
+  // correlated streams, and one unlucky base seed stays unlucky for hundreds of
+  // attempts. Drawing every attempt from a single seeded stream decorrelates
+  // them and keeps the run reproducible.
+  const rng = mulberry32(mix32(baseSeed));
 
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
     const solution = generateFullSolution(rng);
     const puzzle: Grid = solution.slice() as unknown as Grid;
 
@@ -184,16 +219,22 @@ export const generatePuzzle = (
     // Rate once, with the tier cap of the requested level. A puzzle that
     // needs a harder technique than the level allows is not that level.
     const rating = ratePuzzle(puzzle, maxTier);
-    lastPuzzle = puzzle;
+
+    lastPuzzle = { grid: puzzle, solution: solution.slice() as unknown as Grid, seed: baseSeed };
     lastRating = rating;
 
     if (rating.solved && rating.difficulty === difficulty) {
-      return { puzzle, rating, matched: true };
+      return { puzzle: lastPuzzle, rating, matched: true };
     }
   }
 
   if (lastPuzzle && lastRating) {
-    return { puzzle: lastPuzzle, rating: lastRating, matched: false };
+    // The rating above was measured with the CAP of the requested level, which
+    // answers "is this puzzle that level?" but not "what level is it?". A
+    // `matched: false` result has to report the level really measured
+    // (spec-001 RF-5, spec-006 RF-14): re-rate without the cap.
+    const measured = ratePuzzle(lastPuzzle, 9);
+    return { puzzle: lastPuzzle, rating: measured, matched: false };
   }
   throw new Error('puzzle generation produced no candidate');
 };

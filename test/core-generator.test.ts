@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { generatePuzzle } from '../src/core/generator.ts';
 import { countSolutions, solve } from '../src/core/solver.ts';
 import { ratePuzzle, tierToDifficulty, DIFFICULTY_MAX_TIER } from '../src/core/rater.ts';
+import { TECHNIQUES } from '../src/core/techniques.ts';
 import type { Difficulty } from '../src/core/rater.ts';
 import { execSync } from 'node:child_process';
 import { resolve } from 'node:path';
@@ -15,7 +16,7 @@ describe('Generator', () => {
       for (const seed of [1, 2, 3, 4, 5, 6, 7, 8, 9, 10]) {
         const result = generatePuzzle(level, { seed, maxAttempts: 40 });
         assert.equal(
-          countSolutions(result.puzzle, 2),
+          countSolutions(result.puzzle.grid, 2),
           1,
           `seed ${seed} (${level}) must have exactly one solution`,
         );
@@ -25,7 +26,7 @@ describe('Generator', () => {
     test(`every ${level} puzzle is actually a puzzle`, () => {
       for (const seed of [1, 2, 3]) {
         const result = generatePuzzle(level, { seed, maxAttempts: 40 });
-        const blanks = result.puzzle.filter((v) => v === 0).length;
+        const blanks = result.puzzle.grid.filter((v) => v === 0).length;
         assert.ok(
           blanks >= 20,
           `seed ${seed} (${level}) has only ${blanks} blanks: that is a filled board, not a puzzle`,
@@ -51,7 +52,7 @@ describe('Generator', () => {
     for (const level of LEVELS) {
       const a = generatePuzzle(level, { seed: 99, maxAttempts: 40 });
       const b = generatePuzzle(level, { seed: 99, maxAttempts: 40 });
-      assert.deepEqual([...a.puzzle], [...b.puzzle], `${level} is not deterministic`);
+      assert.deepEqual([...a.puzzle.grid], [...b.puzzle.grid], `${level} is not deterministic`);
       assert.deepEqual(a.rating, b.rating);
     }
   });
@@ -60,7 +61,7 @@ describe('Generator', () => {
     const seen = new Set<string>();
     for (const seed of [1, 2, 3, 4, 5]) {
       const result = generatePuzzle('medio', { seed, maxAttempts: 40 });
-      seen.add(result.puzzle.join(''));
+      seen.add(result.puzzle.grid.join(''));
     }
     assert.equal(seen.size, 5, 'five seeds produced fewer than five distinct puzzles');
   });
@@ -77,7 +78,34 @@ describe('Generator', () => {
   test('an exhausted attempt budget reports matched:false with the real level', () => {
     const result = generatePuzzle('dificil', { seed: 3, maxAttempts: 1 });
     assert.equal(result.matched, false, 'one attempt cannot be claimed as a match');
-    assert.ok(result.rating.difficulty, 'the real measured level must still be reported');
+    // The rating has to be the level actually measured, not the level asked
+    // for. Measuring a single candidate WITH the cap of "dificil" would label
+    // anything the cap cannot finish as "dificil", which is the lie RF-5 bans.
+    const measuredWithoutCap = ratePuzzle(result.puzzle, 9);
+    assert.equal(result.rating.difficulty, measuredWithoutCap.difficulty);
+    assert.equal(result.rating.maxTier, measuredWithoutCap.maxTier);
+  });
+
+  test('an unknown difficulty is rejected instead of defaulting', () => {
+    assert.throws(
+      () => generatePuzzle('imposible' as never, { seed: 1 }),
+      /unknown difficulty/,
+      'an unknown level must not silently become "facil"',
+    );
+  });
+
+  test('the puzzle carries its own verified solution', () => {
+    const result = generatePuzzle('medio', { seed: 11, maxAttempts: 40 });
+    assert.equal(result.puzzle.solution.length, 81);
+    assert.ok(result.puzzle.solution.every((v) => v !== 0), 'the solution must be complete');
+    // The clues agree with the solution, cell by cell.
+    for (let i = 0; i < 81; i++) {
+      if (result.puzzle.grid[i] !== 0) {
+        assert.equal(result.puzzle.solution[i], result.puzzle.grid[i], `cell ${i} disagrees`);
+      }
+    }
+    assert.equal(countSolutions(result.puzzle.grid, 2), 1);
+    assert.equal(result.puzzle.seed, 11);
   });
 
   test('an invalid attempt budget is rejected', () => {
@@ -118,6 +146,21 @@ describe('Rater', () => {
     const rating = ratePuzzle(solution as never);
     assert.equal(rating.solved, true);
     assert.equal(rating.maxTier, 0, 'a solved board needs no technique');
+  });
+
+  test('the rater never invents a tier it did not use', () => {
+    for (const level of LEVELS) {
+      const result = generatePuzzle(level, { seed: 5, maxAttempts: 40 });
+      const used = Object.keys(result.rating.techniqueCounts);
+      for (const technique of used) {
+        const entry = TECHNIQUES.find((t) => t.id === technique);
+        assert.ok(entry, `unknown technique in the rating: ${technique}`);
+        assert.ok(
+          entry.tier <= result.rating.maxTier,
+          `${technique} (tier ${entry.tier}) exceeds maxTier ${result.rating.maxTier}`,
+        );
+      }
+    }
   });
 
   test('rating never exceeds the allowed tier of the requested level', () => {

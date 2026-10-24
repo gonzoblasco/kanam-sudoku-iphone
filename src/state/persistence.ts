@@ -30,7 +30,6 @@ export interface SavedGame {
   selected: number | null;
   hintsUsed: number;
   elapsedMs: number;
-  paused: boolean;
   notes: Record<number, number>;
 }
 
@@ -38,6 +37,13 @@ export const GAME_KEY = 'kanam.sudoku.iphone.game';
 export const PREFS_KEY = 'kanam.sudoku.iphone.prefs';
 
 export const SCHEMA_VERSION = 1;
+
+/** The stored preferences. Only the last level played is used in v1. */
+export interface Prefs {
+  lastDifficulty: 'facil' | 'medio' | 'dificil' | null;
+}
+
+const EMPTY_PREFS: Prefs = { lastDifficulty: null };
 
 const emptyState = (): GameState => createGameState(new Array(81).fill(0) as Cell[]);
 
@@ -49,7 +55,6 @@ export const serialize = (state: GameState): SavedGame => ({
   selected: state.selected,
   hintsUsed: state.hintsUsed,
   elapsedMs: state.elapsedMs,
-  paused: state.paused,
   notes: { ...state.notes },
 });
 
@@ -78,7 +83,15 @@ export const deserialize = (payload: unknown): { state: GameState | null; recove
   }
 
   const raw = parsed as Record<string, unknown>;
-  const version = typeof raw.schemaVersion === 'number' ? raw.schemaVersion : 0;
+  // The first persisted shape never had `schemaVersion`; some early payloads
+  // carried the number as `version`. Both mean version 0, and a `version`
+  // above the current one is a future payload, not an old one.
+  const version =
+    typeof raw.schemaVersion === 'number'
+      ? raw.schemaVersion
+      : typeof raw.version === 'number'
+        ? raw.version
+        : 0;
 
   // A future version is rejected, never guessed at.
   if (version > SCHEMA_VERSION) {
@@ -106,13 +119,24 @@ export const deserialize = (payload: unknown): { state: GameState | null; recove
     // Version 0: a filled cell was a clue.
     for (let i = 0; i < 81; i++) if (cells[i] !== 0) givens.push(i);
   }
+  // A given without a value is not a given: the invariant "givens are cells
+  // with a value" has to hold after a restore, or the cell becomes unwritable
+  // and empty at the same time.
+  const cleanGivens = [...new Set(givens)].filter((index) => cells[index] !== 0).sort((a, b) => a - b);
 
   const selected = raw.selected;
   const notes = (raw.notes ?? {}) as Record<string, unknown>;
   const cleanNotes: Record<number, number> = {};
   for (const [key, value] of Object.entries(notes)) {
     const index = Number(key);
-    if (Number.isInteger(index) && index >= 0 && index < 81 && Number.isInteger(value)) {
+    if (
+      Number.isInteger(index) &&
+      index >= 0 &&
+      index < 81 &&
+      Number.isInteger(value) &&
+      (value as number) >= 0 &&
+      (value as number) <= 0x1ff
+    ) {
       cleanNotes[index] = value as number;
     }
   }
@@ -121,16 +145,56 @@ export const deserialize = (payload: unknown): { state: GameState | null; recove
   return {
     state: {
       ...state,
-      givens,
+      givens: cleanGivens,
       selected:
         typeof selected === 'number' && selected >= 0 && selected < 81 ? selected : null,
       hintsUsed: typeof raw.hintsUsed === 'number' ? raw.hintsUsed : 0,
-      elapsedMs: typeof raw.elapsedMs === 'number' ? raw.elapsedMs : 0,
-      paused: typeof raw.paused === 'boolean' ? raw.paused : true,
+      // Version 0 kept the time as `elapsed`; version 1 as `elapsedMs`.
+      elapsedMs:
+        typeof raw.elapsedMs === 'number'
+          ? Math.max(0, raw.elapsedMs)
+          : typeof raw.elapsed === 'number'
+            ? Math.max(0, raw.elapsed)
+            : 0,
+      // A restored game ALWAYS starts paused: the time the app was closed must
+      // not count, and the player decides when to continue (spec-005 RF-12).
+      // The payload does not carry the flag for that reason.
+      paused: true,
       notes: cleanNotes,
     },
     recovered: false,
   };
+};
+
+/** Persist the small preferences object. Failures are swallowed, like `save`. */
+export const savePrefs = (prefs: Prefs, storage: Storage): boolean => {
+  try {
+    storage.setItem(PREFS_KEY, JSON.stringify(prefs));
+    return true;
+  } catch {
+    return false;
+  }
+};
+
+/** Read the preferences. A missing or corrupt payload yields the defaults. */
+export const loadPrefs = (storage: Storage): Prefs => {
+  let raw: string | null = null;
+  try {
+    raw = storage.getItem(PREFS_KEY);
+  } catch {
+    return { ...EMPTY_PREFS };
+  }
+  if (!raw) return { ...EMPTY_PREFS };
+  try {
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    const value = parsed.lastDifficulty;
+    if (value === 'facil' || value === 'medio' || value === 'dificil') {
+      return { lastDifficulty: value };
+    }
+  } catch {
+    // A corrupt preferences payload is not worth an error: defaults are fine.
+  }
+  return { ...EMPTY_PREFS };
 };
 
 /**

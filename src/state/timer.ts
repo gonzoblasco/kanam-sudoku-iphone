@@ -18,12 +18,18 @@ export interface Timer {
   elapsedMs(): number;
 }
 
-/** Create a timer instance. `now` is a function returning current timestamp (ms). */
-export const createTimer = (now: () => number): Timer => {
+/**
+ * Create a timer instance.
+ *
+ * `now` returns the current timestamp in milliseconds. `initialElapsed` seeds
+ * the timer with time already played, which is what a restored game needs: the
+ * persisted `elapsedMs` is effective play time, not a wall clock.
+ */
+export const createTimer = (now: () => number, initialElapsed = 0): Timer => {
   let startTs = 0;
-  let elapsed = 0;
+  let elapsed = Math.max(0, initialElapsed);
   let running = false;
-  let highWater = 0;
+  let highWater = elapsed;
   return {
     start() {
       if (!running) {

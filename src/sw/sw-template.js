@@ -46,15 +46,13 @@ self.addEventListener("activate", (event) => {
  * to the network and fail.
  */
 const relativePath = (pathname) => {
-  const scope = new URL(self.registration.scope).pathname;
-  if (scope && scope !== "/" && pathname.startsWith(scope)) {
-    // The scope ends with "/", so the leading slash of the remainder is kept.
-    return "." + pathname.slice(scope.length - 1);
-  }
-  if (scope === "/" && pathname.startsWith("/")) {
-    return "." + pathname;
-  }
-  return pathname;
+  // `scope` is a directory URL, so it normally ends with "/". Normalise anyway:
+  // a scope without the trailing slash would make `slice` drop the last
+  // character of the path and the cache lookup would miss every asset.
+  const raw = new URL(self.registration.scope).pathname;
+  const scope = raw.endsWith("/") ? raw : raw + "/";
+  if (!pathname.startsWith(scope)) return pathname;
+  return "./" + pathname.slice(scope.length);
 };
 
 self.addEventListener("fetch", (event) => {

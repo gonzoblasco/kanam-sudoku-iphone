@@ -160,4 +160,26 @@ describe('Validator', () => {
     isSolved(grid);
     assert.equal(JSON.stringify(grid), before, 'the validation mutated its input');
   });
+
+  test('a grid of the wrong length is an explicit error', () => {
+    // An "undefined means no conflict" read would silently report a truncated
+    // grid as conflict-free.
+    assert.throws(() => findConflicts(new Array(80).fill(0) as Grid));
+    assert.throws(() => isSolved(new Array(80).fill(1) as Grid));
+  });
+
+  test('values outside 1..9 are ignored, not reported as conflicts', () => {
+    const grid = new Array(81).fill(0);
+    grid[0] = 5;
+    grid[1] = 5;
+    // A malformed value must not become a "digit" and must not hide the real
+    // conflict either.
+    grid[2] = 12;
+    const conflicts = findConflicts(grid as Grid);
+    // Cells 0 and 1 share the first row and the first block: two units, one
+    // conflict each, and none of them about the malformed 12.
+    assert.equal(conflicts.length, 2);
+    assert.ok(conflicts.every((c) => c.value === 5));
+    assert.equal(isComplete(new Array(81).fill(12) as Grid), false);
+  });
 });

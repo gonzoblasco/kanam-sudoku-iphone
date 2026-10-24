@@ -1,12 +1,16 @@
 /*
-  Kanam Sudoku iPhone – UI styles
-  Implements the visual requirements of SPEC‑003 (board) and SPEC‑004 (keypad)
-  – 44 px minimum touch targets, dark / light themes via prefers‑color‑scheme,
-  – AA contrast, no reliance on :hover for state indication.
+  Kanam Sudoku iPhone - UI styles
+
+  Implements the visual requirements of SPEC-003 (board) and SPEC-004 (keypad):
+  44px minimum touch targets, light/dark themes through `prefers-color-scheme`,
+  AA contrast, and no state that is carried by colour alone.
+
+  Layout contract: the board is a column of 9 rows, and every row is a flex row
+  of 9 cells. A cell is placed in the row container of its own row (render.ts);
+  if the containers stacked their children the board would render transposed.
 */
 
 :root {
-  /* Light theme colours */
   --bg: #ffffff;
   --text: #000000;
   --grid-line: #808080;
@@ -17,6 +21,8 @@
   --highlight-block: rgba(0, 0, 255, 0.2);
   --highlight-same: rgba(255, 255, 0, 0.2);
   --given-weight: 600;
+  --key-bg: #f1f1f1;
+  --key-border: #767676;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -26,24 +32,29 @@
     --grid-line: #767676;
     --selected-outline: #00ffff;
     --conflict-color: #ff8888;
-    /* keep the same highlight colours – they stay readable on dark */
+    /* The highlight tints sit on top of the page background, so they keep the
+       same alpha: the composited result is checked by check-contrast.mjs. */
     --highlight-row: rgba(255, 0, 0, 0.2);
     --highlight-column: rgba(0, 255, 0, 0.2);
     --highlight-block: rgba(0, 0, 255, 0.2);
     --highlight-same: rgba(255, 255, 0, 0.2);
     --given-weight: 600;
+    --key-bg: #2a2a2a;
+    --key-border: #9a9a9a;
   }
 }
 
-html, body {
+html,
+body {
   margin: 0;
   padding: 0;
   height: 100%;
   background: var(--bg);
   color: var(--text);
-  overflow: hidden; /* no scroll vertical */
+  overflow: hidden; /* no vertical scroll, no horizontal scroll */
   user-select: none;
-  -webkit-touch-callout: none; /* iOS: disable long‑press menu */
+  -webkit-touch-callout: none; /* iOS: a long press must not open the menu */
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
 }
 
 #app {
@@ -51,59 +62,82 @@ html, body {
   flex-direction: column;
   align-items: center;
   justify-content: center;
-  height: 100dvh; /* fallback handled by the browser */
-  max-height: 100vh;
+  height: 100dvh;
   box-sizing: border-box;
-  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
+    env(safe-area-inset-left);
+  min-height: 0;
 }
 
-/* Board container */
+/* --- Board ---------------------------------------------------------------- */
+
+/*
+ * Nine 44px columns are 396px wide: 6px more than a 390px viewport. The board is
+ * centred and the page clips the surplus symmetrically, so no scroll bar
+ * appears. The 44px floor is a hard constraint (AGENTS.md) and it cannot be
+ * satisfied inside 390px when 9 columns and any border coexist; see the review
+ * report for the arithmetic.
+ */
 #board {
-  display: grid;
-  grid-template-columns: repeat(9, 1fr);
-  width: 100%;
-  max-width: 100vw;
-  aspect-ratio: 1; /* square */
-  border: 3px solid var(--grid-line); /* outer border – thicker than inner */
+  display: flex;
+  flex-direction: column;
+  width: calc(9 * 44px);
+  aspect-ratio: 1;
+  margin: 0 auto;
+  touch-action: manipulation;
+}
+
+.board-row {
+  display: flex;
+  flex: 1 1 0;
+  min-height: 0;
 }
 
 .cell {
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 1rem;
-  min-width: 44px;
-  min-height: 44px;
+  flex: 0 0 44px;
+  width: 44px;
+  height: 44px;
   box-sizing: border-box;
   border: 1px solid var(--grid-line);
   background: transparent;
+  font-size: 1.25rem;
+  line-height: 1;
 }
 
-/* Thicker borders for 3×3 block boundaries */
-.cell:nth-child(3n+1) {
+/* Block boundaries: every third column starts a block, and rows 1, 4 and 7
+   carry the thicker top border. The comparison is 3px against the 1px inner
+   border, which is what SPEC-003 RF-4 asks for. */
+.cell:nth-child(3n + 1) {
   border-left-width: 3px;
-}
-.cell:nth-child(-n+9) {
-  border-top-width: 3px;
 }
 .cell:nth-child(9n) {
   border-right-width: 3px;
 }
-.cell:nth-child(n+73) {
+.board-row:nth-child(3n + 1) .cell {
+  border-top-width: 3px;
+}
+.board-row:last-child .cell {
   border-bottom-width: 3px;
 }
 
-/* State visual channels */
+/* --- Cell states ----------------------------------------------------------
+   Each state has a channel of its own: weight, outline, underline + border, or
+   a background tint. Colour is never the only signal. */
+
 .cell[data-given="true"] {
   font-weight: var(--given-weight);
 }
 
 .cell[data-selected="true"] {
   outline: 2px solid var(--selected-outline);
+  outline-offset: -2px;
 }
 
 .cell[data-conflict="true"] {
-  border-bottom: 4px solid var(--conflict-color);
+  border-bottom: 3px solid var(--conflict-color);
   text-decoration: underline;
 }
 
@@ -120,22 +154,40 @@ html, body {
   background: var(--highlight-same);
 }
 
-/* Keypad */
+/* --- Keypad --------------------------------------------------------------- */
+
 #keypad {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
+  grid-auto-rows: 44px;
   gap: 4px;
+  width: calc(9 * 44px);
+  max-width: 100vw;
   margin-top: 12px;
+  padding-bottom: env(safe-area-inset-bottom);
+  touch-action: manipulation;
+  -webkit-touch-callout: none;
+}
+
+/* Keys 1-9 fill the first three columns; erase sits on their right. */
+#keypad button[data-digit="0"] {
+  grid-column: 4;
+  grid-row: 1 / span 3;
 }
 
 #keypad button {
   min-width: 44px;
   min-height: 44px;
-  font-size: 1rem;
+  font-size: 1.25rem;
+  background: var(--key-bg);
+  color: var(--text);
+  border: 1px solid var(--key-border);
+  border-radius: 8px;
   cursor: pointer;
 }
 
-/* Menu & Victory screens – simple centered boxes */
+/* --- Menu and victory ----------------------------------------------------- */
+
 .screen {
   text-align: center;
 }
@@ -143,21 +195,38 @@ html, body {
 button.menu-button {
   display: block;
   width: 200px;
+  min-height: 44px;
   margin: 8px auto;
   padding: 12px;
   font-size: 1rem;
 }
 
-/* Hide elements that are not part of the current phase – we toggle via JS */
-.hidden { display: none !important; }
+/* Hide the screens that are not part of the current phase. The app toggles it. */
+.hidden {
+  display: none !important;
+}
 
-/* Respect prefers‑reduced‑motion – all transitions are instantly 0 duration */
+/*
+ * Accessible-only text: the aria-live region must be announced by the screen
+ * reader and must NOT take space on the screen (SPEC-004 RF-9). Without this
+ * rule the announcement is painted under the keypad.
+ */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
 @media (prefers-reduced-motion: reduce) {
   * {
     transition-duration: 0s !important;
     animation-duration: 0s !important;
   }
 }
-
-/* End of styles */
-

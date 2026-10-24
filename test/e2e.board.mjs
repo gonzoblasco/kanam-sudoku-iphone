@@ -83,18 +83,27 @@ checks.ok(
 );
 
 // --- 5. Selecting a cell highlights row, column, block and same digit --------
-await page.click('.cell[data-index="40"]');
+// Select an EMPTY cell. The puzzle is generated with a fresh seed on every run,
+// so selecting a cell whose digit repeats elsewhere would legitimately produce
+// `same` highlights instead of `block`/`row`/`column` ones.
+const selectedIndex = await page.evaluate(() => {
+  const cell = [...document.querySelectorAll('.cell')].find(
+    (c) => c.dataset.given !== 'true',
+  );
+  return cell ? Number(cell.dataset.index) : 40;
+});
+await page.click(`.cell[data-index="${selectedIndex}"]`);
 // The highlight is ONE value per cell, with the precedence
 // same > block > column > row (data-model.md). So the property to assert is
 // that every cell of the row, the column and the block IS highlighted, and
 // that the label of each cell follows the precedence.
-const highlight = await page.evaluate(() => {
+const highlight = await page.evaluate((selectedIndex) => {
   const cells = [...document.querySelectorAll('.cell')];
   const of = (predicate) => cells.filter(predicate);
   const index = (c) => Number(c.dataset.index);
   const label = (c) => c.getAttribute('data-highlight');
 
-  const selected = 40;
+  const selected = selectedIndex;
   const row = of((c) => Math.floor(index(c) / 9) === Math.floor(selected / 9));
   const column = of((c) => index(c) % 9 === selected % 9);
   const block = of((c) => {
@@ -130,7 +139,7 @@ const highlight = await page.evaluate(() => {
           Math.floor((index(c) % 9) / 3) === Math.floor((selected % 9) / 3)),
     ).length,
   };
-});
+}, selectedIndex);
 checks.equal('exactly one cell is selected', highlight.selected, 1);
 // The selected cell is not highlighted itself: 8 of 9 in each unit.
 checks.equal('the rest of the row is highlighted', highlight.rowHighlighted, 8);
@@ -142,6 +151,42 @@ checks.equal('the block has 9 cells', highlight.blockTotal, 9);
 // The labels follow the precedence: a cell in the block says "block", even
 // when it is also in the row or the column.
 checks.equal('the block label wins over row and column', highlight.counts.block, 8);
+
+// --- 5b. A repeated digit elsewhere is highlighted as "same" ---------------
+// SPEC-003: selecting a cell whose digit appears in another cell highlights
+// that other cell with `data-highlight="same"`.
+const sameCheck = await page.evaluate(() => {
+  const cells = [...document.querySelectorAll('.cell')];
+  // A cell with a digit, and another cell with the same digit.
+  const byValue = new Map();
+  for (const cell of cells) {
+    const value = cell.textContent?.trim();
+    if (!value) continue;
+    const list = byValue.get(value) ?? [];
+    list.push(Number(cell.dataset.index));
+    byValue.set(value, list);
+  }
+  const duplicate = [...byValue.entries()].find(([, list]) => list.length >= 2);
+  return duplicate ? { digit: duplicate[0], indices: duplicate[1] } : null;
+});
+if (sameCheck) {
+  await page.click(`.cell[data-index="${sameCheck.indices[0]}"]`);
+  const same = await page.evaluate(
+    (indices) =>
+      indices.slice(1).map((index) => {
+        const cell = document.querySelector(`.cell[data-index="${index}"]`);
+        return cell ? cell.getAttribute('data-highlight') : null;
+      }),
+    sameCheck.indices,
+  );
+  checks.ok(
+    'a repeated digit is highlighted as "same"',
+    same.length > 0 && same.every((label) => label === 'same'),
+    `digit ${sameCheck.digit}: ${JSON.stringify(same)}`,
+  );
+} else {
+  checks.ok('a repeated digit exists to highlight', false, 'the generated puzzle has no repeated digit');
+}
 
 // --- 6. A given cannot be edited --------------------------------------------
 const givenEdited = await page.evaluate(async () => {

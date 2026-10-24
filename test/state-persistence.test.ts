@@ -9,6 +9,8 @@ import {
   redo,
   selectCell,
   setValue,
+  setNote,
+  getNote,
   undo,
   HISTORY_LIMIT,
   type GameState,
@@ -42,7 +44,8 @@ describe('Game state', () => {
     const next = setValue(state, 0, 5);
     assert.equal(getValue(next, 0), 5);
     assert.equal(next.history.entries.length, 1);
-    assert.equal(next.history.pointer, 0);
+    // The pointer counts APPLIED mutations: 0 <= pointer <= entries.length.
+    assert.equal(next.history.pointer, 1);
   });
 
   test('the previous state is never mutated', () => {
@@ -98,6 +101,51 @@ describe('Game state', () => {
     assert.equal(getValue(redone, 1), 0, 'redo resurrected a discarded branch');
   });
 
+  test('undo after the cap drops the oldest entry restores the real value', () => {
+    // The bug this covers: recomputing the previous value by scanning the
+    // history backwards. Once the cap has dropped the entry that wrote the
+    // cell, the scan reaches the start of a history that is not the start of
+    // the game and "restores" 0 over a value the player really had.
+    let state = emptyBoard();
+    state = setValue(state, 0, 5 as Cell);
+    // Push the entry that wrote cell 0 out of the capped history.
+    for (let i = 0; i < HISTORY_LIMIT + 5; i++) {
+      state = setValue(state, 1 + (i % 80), ((i % 9) + 1) as Cell);
+    }
+    state = setValue(state, 0, 6 as Cell);
+    const undone = undo(state);
+    assert.equal(getValue(undone, 0), 5, 'undo fell through the truncated history to 0');
+  });
+
+  test('undo and redo across the same cell keep the exact value', () => {
+    // The adversarial sequence: write, undo, write something else, undo, redo.
+    let state = emptyBoard();
+    state = setValue(state, 4, 7 as Cell);
+    state = undo(state);
+    state = setValue(state, 4, 2 as Cell);
+    state = undo(state);
+    assert.equal(getValue(state, 4), 0, 'the cell must be empty after both undos');
+    state = redo(state);
+    assert.equal(getValue(state, 4), 2, 'redo must apply the surviving mutation');
+    assert.equal(state.history.pointer, 1);
+    assert.equal(state.history.entries.length, 1, 'the discarded branch must be gone');
+  });
+
+  test('the history pointer stays within its documented range', () => {
+    let state = emptyBoard();
+    assert.equal(state.history.pointer, 0);
+    for (let i = 0; i < 5; i++) {
+      state = setValue(state, i, 1 as Cell);
+      assert.ok(
+        state.history.pointer >= 0 && state.history.pointer <= state.history.entries.length,
+        `pointer ${state.history.pointer} out of range for ${state.history.entries.length} entries`,
+      );
+    }
+    state = undo(state);
+    state = undo(state);
+    assert.equal(state.history.pointer, 3);
+  });
+
   test('the history is capped and the current state survives the cap', () => {
     let state = emptyBoard();
     const total = HISTORY_LIMIT + 50;
@@ -124,6 +172,21 @@ describe('Game state', () => {
     const selected = selectCell(state, 12);
     assert.equal(selected.selected, 12);
     assert.equal(selectCell(selected, null).selected, null);
+  });
+
+  test('a note lives in the state without touching the board or the history', () => {
+    // SPEC-005 RF-6: the structure is ready in v1. The pair (present in the
+    // serialized payload, absent from the DOM) is the proof that adding the
+    // notes UI later does not need to rewrite the core.
+    const state = emptyBoard();
+    const withNote = setNote(state, 9, 0b101010101);
+    assert.equal(getNote(withNote, 9), 0b101010101);
+    assert.equal(getValue(withNote, 9), 0, 'a note must not fill the cell');
+    assert.equal(withNote.history.entries.length, 0, 'a note is not a board mutation');
+    assert.equal(getNote(state, 9), 0, 'the previous state must not change');
+    assert.deepEqual(serialize(withNote).notes, { 9: 0b101010101 });
+    assert.deepEqual(serialize(setNote(withNote, 9, 0)).notes, {}, 'clearing a note removes it');
+    assert.throws(() => setNote(state, 9, 9999));
   });
 
   test('an out-of-range cell is rejected', () => {
@@ -224,6 +287,35 @@ describe('Persistence', () => {
     assert.ok(result.state);
     assert.deepEqual(result.state!.givens, [0], 'the old format had no givens: filled cells were clues');
     assert.equal(result.state!.grid[0], 5);
+  });
+
+  test('a restored game is always paused', () => {
+    const storage = memoryStorage();
+    const running = { ...setValue(emptyBoard(), 0, 5 as Cell), paused: false, elapsedMs: 9000 };
+    save(running, storage);
+    const restored = load(storage).state!;
+    assert.equal(restored.paused, true, 'the restore must not resume a clock by itself');
+    assert.equal(restored.elapsedMs, 9000, 'the effective time must survive');
+  });
+
+  test('a given without a value is not kept as a given', () => {
+    // A corrupt payload claiming index 3 as a given while the cell is empty
+    // would make the cell unwritable and empty at the same time.
+    const grid = new Array(81).fill(0);
+    grid[0] = 5;
+    const result = deserialize({ schemaVersion: 1, grid, givens: [0, 3] });
+    assert.deepEqual(result.state!.givens, [0]);
+  });
+
+  test('notes outside the 9-bit range are dropped', () => {
+    const grid = new Array(81).fill(0);
+    const result = deserialize({
+      schemaVersion: 1,
+      grid,
+      givens: [],
+      notes: { 0: 511, 1: 9999, 2: -1, 90: 3 },
+    });
+    assert.deepEqual(result.state!.notes, { 0: 511 });
   });
 
   test('clearing the saved game removes it', () => {

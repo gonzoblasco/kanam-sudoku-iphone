@@ -9,10 +9,19 @@ import { resolve, relative, join } from "node:path";
 import crypto from "node:crypto";
 
 const projectRoot = process.cwd();
-const distDir = resolve(projectRoot, "dist");
+// `DIST_DIR` lets a test emit a worker for a throwaway build directory, which
+// is how "the version derives from the content" is verified without touching
+// the real `dist/`.
+const distDir = resolve(projectRoot, process.env.DIST_DIR ?? "dist");
 const templatePath = resolve(projectRoot, "src", "sw", "sw-template.js");
 
-// Collect all files that should be precached (excluding the generated sw.js itself).
+// Collect all files that should be precached.
+//
+// `sw.js` is excluded: it is the artifact being written, and precaching it
+// makes the cache version depend on the previous generation instead of on the
+// build. The version then changes on every run, which invalidates a cache that
+// has not changed, and `cache.addAll` can reject a request for the worker
+// itself (browsers special-case it).
 function collectFiles(dir) {
   const entries = readdirSync(dir, { withFileTypes: true });
   const files = [];
@@ -21,8 +30,8 @@ function collectFiles(dir) {
     if (entry.isDirectory()) {
       files.push(...collectFiles(fullPath));
     } else if (entry.isFile()) {
-      // Exclude source map files and the eventual sw.js (if already present).
       if (entry.name.endsWith('.map')) continue;
+      if (entry.name === 'sw.js' && fullPath === resolve(distDir, 'sw.js')) continue;
       const rel = "./" + relative(distDir, fullPath).replace(/\\/g, '/');
       files.push(rel);
     }

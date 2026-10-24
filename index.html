@@ -11,7 +11,11 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="default" />
   <meta name="apple-mobile-web-app-title" content="Kanam Sudoku" />
   <link rel="apple-touch-icon" href="./icon-192.png" />
-  <meta name="theme-color" content="#ffffff" id="theme-color-meta" />
+  <!-- Two theme-color declarations: the browser picks the one whose media query
+       matches, so the status bar follows the system theme. Both values match
+       the `--bg` of the corresponding theme in styles.css. -->
+  <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" id="theme-color-meta" />
+  <meta name="theme-color" content="#111111" media="(prefers-color-scheme: dark)" />
   <link rel="stylesheet" href="src/ui/styles.css" />
 </head>
 <body>

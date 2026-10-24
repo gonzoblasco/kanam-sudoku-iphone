@@ -10,6 +10,7 @@ import type { Grid } from './grid.ts';
 import { initCandidates, applyDeduction } from './analysis.ts';
 import type { Deduction } from './analysis.ts';
 import { findDeduction } from './techniques.ts';
+import type { Puzzle } from './generator.ts';
 
 export type Difficulty = 'facil' | 'medio' | 'dificil';
 
@@ -51,13 +52,17 @@ const MAX_STEPS = 500;
  * `maxTier` caps the techniques used, which is how the generator asks "can this
  * puzzle be solved with only easy techniques?".
  */
-export const ratePuzzle = (puzzle: Grid, maxTier?: number): Rating => {
-  const candidates = initCandidates(puzzle);
+export const ratePuzzle = (puzzle: Puzzle | Grid, maxTier?: number): Rating => {
+  // The public contract takes a `Puzzle` (docs/architecture.md §3.5); a bare
+  // grid is accepted so the rater can be pointed at an arbitrary board (the
+  // tests do that with a known solution).
+  const grid: Grid = Array.isArray(puzzle) ? puzzle : puzzle.grid;
+  const candidates = initCandidates(grid);
   // A cell is resolved when it carries a given, or when a deduction placed a
   // digit in it. The candidate mask alone cannot tell "resolved" from "dead
   // end" (both are zero), so resolution is tracked separately.
   const resolved = new Uint8Array(81);
-  for (let i = 0; i < 81; i++) resolved[i] = puzzle[i] !== 0 ? 1 : 0;
+  for (let i = 0; i < 81; i++) resolved[i] = grid[i] !== 0 ? 1 : 0;
 
   const techniqueCounts: Record<string, number> = {};
   let maxUsed = 0;
@@ -69,6 +74,13 @@ export const ratePuzzle = (puzzle: Grid, maxTier?: number): Rating => {
 
     applyDeduction(candidates, deduction);
     if (deduction.cell >= 0) resolved[deduction.cell] = 1;
+    // An elimination can empty a cell's candidate mask. That is a contradiction
+    // (the puzzle cannot be solved along this path), not a resolved cell, and
+    // it must stop the rating instead of looping over a dead state.
+    if (deduction.cell < 0 && deduction.eliminate) {
+      const dead = deduction.eliminate.some((entry) => candidates[entry.cell] === 0);
+      if (dead) break;
+    }
 
     steps++;
     maxUsed = Math.max(maxUsed, deduction.tier);

@@ -17,6 +17,19 @@ export type Mutation =
   | { type: 'set'; index: number; value: Cell }
   | { type: 'clear'; index: number };
 
+/**
+ * A mutation as it is kept in the history.
+ *
+ * `prev` is the value the cell held before the mutation, captured when the
+ * mutation is applied. The public `Mutation` contract is unchanged; the extra
+ * field is internal and is never serialized. Recomputing the previous value by
+ * scanning the history backwards is equivalent only while no entry has been
+ * dropped by the cap: once the oldest entry falls off, the scan reaches the
+ * start of a history that is no longer the start of the game and restores 0
+ * over a value the player really had.
+ */
+export type HistoryEntry = Mutation & { prev?: Cell };
+
 /** The game state contract (SPEC-005). */
 export interface GameState {
   /** Current board values. */
@@ -31,8 +44,15 @@ export interface GameState {
   elapsedMs: number;
   /** Whether the clock is paused. */
   paused: boolean;
-  /** Mutation history and the position within it. */
-  history: { entries: Mutation[]; pointer: number };
+  /**
+   * Mutation history and the position within it.
+   *
+   * `pointer` is the number of APPLIED mutations: 0 means "nothing applied",
+   * `entries.length` means "everything applied". That keeps the documented
+   * invariant `0 <= pointer <= entries.length` (docs/data-model.md §1.3) true
+   * for every state, including the empty one.
+   */
+  history: { entries: HistoryEntry[]; pointer: number };
   /** Per-cell candidate mask. Empty in v1, but present in the state. */
   notes: Record<number, number>;
 }
@@ -53,7 +73,7 @@ export const createGameState = (puzzle: Grid): GameState => {
     hintsUsed: 0,
     elapsedMs: 0,
     paused: false,
-    history: { entries: [], pointer: -1 },
+    history: { entries: [], pointer: 0 },
     notes: {},
   };
 };
@@ -85,15 +105,18 @@ export const apply = (state: GameState, mutation: Mutation): GameState => {
   const grid = state.grid.slice() as Cell[];
   grid[index] = value;
 
-  // A new mutation discards the redo branch.
-  const entries = state.history.entries.slice(0, state.history.pointer + 1);
-  entries.push(mutation);
+  // A new mutation discards the redo branch: everything after the pointer is
+  // the redo branch, and it stops being reachable the moment the player writes.
+  const entries = state.history.entries.slice(0, state.history.pointer);
+  // `prev` travels WITH the entry: once the cap drops the oldest one, scanning
+  // the remaining history backwards no longer reaches the start of the game.
+  entries.push({ ...mutation, prev: state.grid[index] });
   while (entries.length > HISTORY_LIMIT) entries.shift();
 
   return {
     ...state,
     grid,
-    history: { entries, pointer: entries.length - 1 },
+    history: { entries, pointer: entries.length },
   };
 };
 
@@ -114,18 +137,40 @@ export const selectCell = (state: GameState, index: number | null): GameState =>
   return { ...state, selected: index };
 };
 
+/**
+ * Write the candidate mask of one cell.
+ *
+ * Notes are part of the state from day one even though the v1 UI does not
+ * render them (ADR-0004). They are not board mutations: a note does not change
+ * a cell's value and must not enter the undo history as if it had. This is the
+ * API the v2 notes UI will call; keeping it here is what makes the extension a
+ * wiring job instead of a rewrite.
+ */
+export const setNote = (state: GameState, index: number, mask: number): GameState => {
+  if (!Number.isInteger(index) || index < 0 || index >= 81) {
+    throw new Error(`cell index out of range: ${index}`);
+  }
+  if (!Number.isInteger(mask) || mask < 0 || mask > 0x1ff) {
+    throw new Error(`note mask out of range: ${mask}`);
+  }
+  const notes = { ...state.notes };
+  if (mask === 0) delete notes[index];
+  else notes[index] = mask;
+  return { ...state, notes };
+};
+
+/** The candidate mask of a cell (0 means no notes). */
+export const getNote = (state: GameState, index: number): number => state.notes[index] ?? 0;
+
 /** Undo the last mutation. */
 export const undo = (state: GameState): GameState => {
   const { pointer, entries } = state.history;
-  if (pointer < 0) return state;
-  const mutation = entries[pointer];
+  if (pointer <= 0) return state;
+  const mutation = entries[pointer - 1];
   if (!mutation) return state;
 
   const grid = state.grid.slice() as Cell[];
-  // Undo a set by restoring the previous value, which the history does not
-  // carry: undo walks back to the value the cell had before, tracked by the
-  // mutation that is being undone.
-  grid[mutation.index] = previousValue(state, mutation, pointer);
+  grid[mutation.index] = mutation.prev ?? initialValue(state, mutation.index);
   return {
     ...state,
     grid,
@@ -136,7 +181,7 @@ export const undo = (state: GameState): GameState => {
 /** Redo the next mutation. */
 export const redo = (state: GameState): GameState => {
   const { pointer, entries } = state.history;
-  const next = entries[pointer + 1];
+  const next = entries[pointer];
   if (!next) return state;
 
   const grid = state.grid.slice() as Cell[];
@@ -149,22 +194,11 @@ export const redo = (state: GameState): GameState => {
 };
 
 /**
- * The value a cell had before the mutation at `pointer` was applied.
+ * The value a cell had before any mutation: its given, or empty.
  *
- * The history stores mutations, not snapshots, so the previous value is
- * recovered from the mutation that came before it: the cell holds the value
- * written by the previous mutation, or the given when there is none.
+ * Fallback for a history entry that has no captured `prev` (an entry built
+ * outside `apply`). Writable cells always start empty, because a given can
+ * never be written.
  */
-const previousValue = (
-  state: GameState,
-  mutation: Mutation,
-  pointer: number,
-): Cell => {
-  for (let i = pointer - 1; i >= 0; i--) {
-    const earlier = state.history.entries[i];
-    if (earlier.index !== mutation.index) continue;
-    return earlier.type === 'clear' ? 0 : earlier.value;
-  }
-  // No earlier mutation touched this cell: it still holds its given value.
-  return (state.givens.includes(mutation.index) ? state.grid[mutation.index] : 0) as Cell;
-};
+const initialValue = (state: GameState, index: number): Cell =>
+  (state.givens.includes(index) ? state.grid[index] : 0) as Cell;

@@ -40,18 +40,36 @@ const UNIT_KINDS: UnitKind[] = [
 ];
 
 /**
+ * A grid of the wrong length is a caller error, not an incomplete board. The
+ * shape check lives here so every entry point reports it the same way: reading
+ * past the end would turn "undefined" into "no conflict".
+ */
+const assertShape = (grid: Grid): void => {
+  if (!Array.isArray(grid) || grid.length !== 81) {
+    throw new Error(`grid must have exactly 81 cells, got ${grid?.length}`);
+  }
+};
+
+/**
  * Find every conflict in the grid.
  *
  * The input is never mutated.
+ *
+ * A grid that is not 81 cells long is a caller error and is reported as such:
+ * reading past the end would produce an "undefined means no conflict" result,
+ * which is exactly the silent behaviour spec-002 rules out.
  */
 export const findConflicts = (grid: Grid): Conflict[] => {
+  assertShape(grid);
   const conflicts: Conflict[] = [];
   for (let u = 0; u < CELLS_OF_UNIT.length; u++) {
     const cells = CELLS_OF_UNIT[u];
     const byDigit = new Map<number, number[]>();
     for (const cell of cells) {
       const value = grid[cell];
-      if (value === 0) continue;
+      // Only 1..9 are digits. A malformed value is ignored, not reported as a
+      // conflict (spec-002 edge cases): the grid shape is another module's job.
+      if (!Number.isInteger(value) || value < 1 || value > 9) continue;
       const list = byDigit.get(value) ?? [];
       list.push(cell);
       byDigit.set(value, list);
@@ -91,7 +109,10 @@ export const conflictedUnits = (grid: Grid): { kind: UnitKind; index: number }[]
 };
 
 /** Is every cell filled? A full board can still have conflicts. */
-export const isComplete = (grid: Grid): boolean => grid.every((v) => v !== 0);
+export const isComplete = (grid: Grid): boolean => {
+  assertShape(grid);
+  return grid.every((v) => Number.isInteger(v) && v >= 1 && v <= 9);
+};
 
 /** Is the board full AND free of conflicts? This is what a victory needs. */
 export const isSolved = (grid: Grid): boolean =>
