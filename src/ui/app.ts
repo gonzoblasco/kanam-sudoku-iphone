@@ -370,6 +370,26 @@ export function initApp(root: HTMLElement): void {
     });
   }
 
+  /**
+   * The clock measures EFFECTIVE play time, not wall time (SPEC-005 RF-14).
+   *
+   * A player who switches to another app for ten minutes has not played ten
+   * minutes: without this, the elapsed time (and the victory time) would
+   * include every second the phone was in another app. Pausing on `hidden`
+   * also persists the time, so an eviction while backgrounded does not lose it.
+   */
+  document.addEventListener('visibilitychange', () => {
+    if (phase !== 'playing') return;
+    if (document.visibilityState === 'hidden') {
+      timer.pause();
+      state = { ...state, elapsedMs: timer.elapsedMs(), paused: true };
+      save(state, storage);
+    } else {
+      timer.resume();
+      state = { ...state, paused: false };
+    }
+  });
+
   renderMenu();
 }
 

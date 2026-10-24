@@ -253,6 +253,46 @@ if (solution.solution) {
 // --- 9. No console errors ---------------------------------------------------
 checks.equal('no console errors', consoleErrors.length, 0, consoleErrors.join(' | '));
 
+// --- 10. The clock is effective play time, not wall time --------------------
+// SPEC-005 RF-14: time spent with the app in the background is not play time.
+{
+  const clockContext = await browser.newContext({ viewport: { width: 390, height: 844 } });
+  const clockPage = await clockContext.newPage();
+  await clockPage.goto(`${server.base}/index.html`);
+  await clockPage.click('button:has-text("Fácil")');
+  await clockPage.waitForSelector('.cell');
+  const clockIndex = await clockPage.evaluate(() => {
+    const cell = [...document.querySelectorAll('.cell')].find((c) => c.dataset.given !== 'true');
+    return Number(cell.dataset.index);
+  });
+  await clockPage.click(`.cell[data-index="${clockIndex}"]`);
+  await clockPage.click('button[data-digit="4"]');
+  const before = await clockPage.evaluate(
+    () => JSON.parse(localStorage.getItem('kanam.sudoku.iphone.game')).elapsedMs,
+  );
+  // Simulate the app going to the background for a while.
+  await clockPage.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { value: 'hidden', configurable: true });
+    Object.defineProperty(document, 'hidden', { value: true, configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  await clockPage.waitForTimeout(1200);
+  const whileHidden = await clockPage.evaluate(
+    () => JSON.parse(localStorage.getItem('kanam.sudoku.iphone.game')).elapsedMs,
+  );
+  await clockPage.evaluate(() => {
+    Object.defineProperty(document, 'visibilityState', { value: 'visible', configurable: true });
+    Object.defineProperty(document, 'hidden', { value: false, configurable: true });
+    document.dispatchEvent(new Event('visibilitychange'));
+  });
+  checks.ok(
+    'the clock does not advance while the app is in the background',
+    whileHidden - before < 300,
+    `before ${before}ms, after 1.2s hidden ${whileHidden}ms`,
+  );
+  await clockContext.close();
+}
+
 await browser.close();
 server.close();
 checks.finish('e2e.keypad');
