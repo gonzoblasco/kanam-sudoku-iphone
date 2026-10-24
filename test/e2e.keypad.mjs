@@ -1,0 +1,178 @@
+/**
+ * E2E: the on-screen keypad and the victory screen (SPEC-004).
+ *
+ * The suite plays a real game to the end: it reads the puzzle from the
+ * running app, solves it, and writes every digit through the keypad. A victory
+ * screen that only ever appears in a mock is not a victory screen.
+ */
+import { launchBrowser } from './_playwright.mjs';
+import { resolve } from 'node:path';
+import { Checks, serveDirectory } from './_harness.mjs';
+import { solve } from '../src/core/solver.ts';
+
+const DIST = resolve(process.cwd(), 'dist');
+const checks = new Checks();
+
+const browser = await launchBrowser();
+const context = await browser.newContext({
+  viewport: { width: 390, height: 844 },
+  isMobile: true,
+  hasTouch: true,
+});
+const page = await context.newPage();
+
+const consoleErrors = [];
+page.on('console', (msg) => {
+  if (msg.type() === 'error') consoleErrors.push(msg.text());
+});
+page.on('pageerror', (err) => consoleErrors.push(String(err)));
+
+const server = await serveDirectory(DIST);
+await page.goto(`${server.base}/index.html`);
+await page.waitForSelector('#menu');
+await page.click('button:has-text("Fácil")');
+await page.waitForSelector('#board:not(.hidden)');
+await page.waitForSelector('.cell');
+
+// --- 1. The keypad has 9 digits and one erase key ---------------------------
+const keypad = await page.evaluate(() => {
+  const container = document.getElementById('keypad');
+  const buttons = [...container.querySelectorAll('button')];
+  return {
+    count: buttons.length,
+    digits: buttons.filter((b) => /^\d$/.test(b.textContent ?? '')).length,
+    erase: buttons.filter((b) => b.getAttribute('aria-label') === 'Borrar').length,
+    role: container.getAttribute('role'),
+    label: container.getAttribute('aria-label'),
+    sizes: buttons.map((b) => {
+      const r = b.getBoundingClientRect();
+      return { w: r.width, h: r.height };
+    }),
+  };
+});
+checks.equal('the keypad has 10 buttons', keypad.count, 10);
+checks.equal('the keypad has 9 digit keys', keypad.digits, 9);
+checks.equal('the keypad has one erase key', keypad.erase, 1);
+checks.equal('the keypad is a named group', keypad.role, 'group');
+checks.ok('the keypad group has a name', Boolean(keypad.label));
+const smallestKey = keypad.sizes.reduce(
+  (acc, s) => ({ w: Math.min(acc.w, s.w), h: Math.min(acc.h, s.h) }),
+  { w: Infinity, h: Infinity },
+);
+checks.atLeast('every key is at least 44px wide', smallestKey.w, 44, 'px');
+checks.atLeast('every key is at least 44px tall', smallestKey.h, 44, 'px');
+
+// --- 2. The keypad sits below the board, without overlapping -----------------
+const layout = await page.evaluate(() => {
+  const board = document.getElementById('board').getBoundingClientRect();
+  const keypad = document.getElementById('keypad').getBoundingClientRect();
+  return { boardBottom: board.bottom, keypadTop: keypad.top, keypadBottom: keypad.bottom };
+});
+checks.ok(
+  'the keypad is below the board',
+  layout.keypadTop >= layout.boardBottom - 1,
+  `board ends at ${layout.boardBottom}, keypad starts at ${layout.keypadTop}`,
+);
+checks.atMost('the keypad fits the viewport', layout.keypadBottom, 844, 'px');
+
+// --- 3. Writing a digit ------------------------------------------------------
+await page.click('.cell[data-index="20"]');
+const liveBefore = await page.textContent('#live');
+await page.click('button[data-digit="7"]');
+const written = await page.evaluate(() => {
+  const cell = document.querySelector('.cell[data-index="20"]');
+  return { value: cell.textContent, selected: cell.dataset.selected };
+});
+checks.equal('the digit is written', written.value, '7');
+checks.equal('the selection stays on the cell', written.selected, 'true');
+const liveAfter = await page.textContent('#live');
+checks.ok('the live region announces the value', liveAfter !== liveBefore, `live: "${liveAfter}"`);
+
+// --- 4. The erase key clears the cell ----------------------------------------
+await page.click('button[data-digit="0"]');
+const cleared = await page.evaluate(
+  () => document.querySelector('.cell[data-index="20"]').textContent,
+);
+checks.equal('the erase key clears the cell', cleared, '');
+
+// --- 5. A given is not written over ------------------------------------------
+const givenIndex = await page.evaluate(() => {
+  const given = document.querySelector('.cell[data-given="true"]');
+  return given ? given.dataset.index : null;
+});
+if (givenIndex !== null) {
+  // The value BEFORE the write: the given may legitimately be a 3, so the
+  // check has to compare against what was there, not against a fixed digit.
+  const givenBefore = await page.evaluate(
+    (index) => document.querySelector(`.cell[data-index="${index}"]`).textContent,
+    givenIndex,
+  );
+  const digitToWrite = givenBefore === '3' ? '4' : '3';
+  await page.click(`.cell[data-index="${givenIndex}"]`);
+  await page.click(`button[data-digit="${digitToWrite}"]`);
+  const givenValue = await page.evaluate(
+    (index) => document.querySelector(`.cell[data-index="${index}"]`).textContent,
+    givenIndex,
+  );
+  const givenStillGiven = await page.evaluate(
+    (index) => document.querySelector(`.cell[data-index="${index}"]`).dataset.given,
+    givenIndex,
+  );
+  checks.equal('the given still holds its value', givenStillGiven, 'true');
+  checks.equal('the given was not overwritten', givenValue, givenBefore);
+}
+
+// --- 6. No scroll while playing ---------------------------------------------
+const scrollY = await page.evaluate(() => window.scrollY);
+checks.equal('playing does not scroll the page', scrollY, 0);
+
+// --- 7. Play the game to the end --------------------------------------------
+// The board is read from the running app, solved, and written with the keypad.
+const puzzle = await page.evaluate(() =>
+  [...document.querySelectorAll('.cell')].map((c) => {
+    if (c.dataset.given === 'true') return Number(c.textContent);
+    return 0;
+  }),
+);
+const solution = solve(puzzle);
+checks.equal('the board on screen is solvable', solution.status, 'solved');
+
+if (solution.solution) {
+  const answer = [...solution.solution];
+  for (let index = 0; index < 81; index++) {
+    if (puzzle[index] !== 0) continue;
+    await page.click(`.cell[data-index="${index}"]`);
+    await page.click(`button[data-digit="${answer[index]}"]`);
+  }
+  const victoryVisible = await page.evaluate(() => {
+    const el = document.getElementById('victory');
+    return el && !el.classList.contains('hidden');
+  });
+  checks.ok('the victory screen appears', victoryVisible);
+  const victoryText = await page.textContent('#victory');
+  checks.ok('the victory screen shows the time', /Tiempo/.test(victoryText ?? ''));
+  const again = await page.$('#victory button[data-action="play-again"]');
+  const other = await page.$('#victory button[data-action="choose-level"]');
+  checks.ok('the victory screen offers "Jugar de nuevo"', again !== null);
+  checks.ok('the victory screen offers "Elegir otro nivel"', other !== null);
+
+  // "Jugar de nuevo" starts a new game of the same level.
+  if (again) {
+    await again.click();
+    await page.waitForSelector('#board:not(.hidden)');
+    const blankCount = await page.evaluate(
+      () =>
+        [...document.querySelectorAll('.cell')].filter(
+          (c) => c.dataset.given !== 'true' && !c.textContent,
+        ).length,
+    );
+    checks.atLeast('playing again starts a fresh board', blankCount, 20, 'cells');
+  }
+}
+
+// --- 8. No console errors ---------------------------------------------------
+checks.equal('no console errors', consoleErrors.length, 0, consoleErrors.join(' | '));
+
+await browser.close();
+server.close();
+checks.finish('e2e.keypad');

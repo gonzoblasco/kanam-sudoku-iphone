@@ -1,47 +1,94 @@
 /**
- * Rate a Sudoku puzzle based on the highest tier of technique required to solve it.
+ * Rate a puzzle by the hardest technique needed to solve it.
+ *
+ * The difficulty of a puzzle is the tier of the most advanced technique the
+ * solver had to use (ADR-0002). It is never derived from the number of blanks:
+ * a puzzle with 45 blanks solved by naked singles is easy, and one with 32
+ * blanks that needs a Swordfish is hard.
  */
-import { Grid } from './grid.js';
-import { initCandidates, applyDeduction, Deduction } from './analysis.js';
-import { findDeduction } from './techniques.js';
+import type { Grid } from './grid.ts';
+import { initCandidates, applyDeduction } from './analysis.ts';
+import type { Deduction } from './analysis.ts';
+import { findDeduction } from './techniques.ts';
+
+export type Difficulty = 'facil' | 'medio' | 'dificil';
 
 export interface Rating {
-  difficulty: 'facil' | 'medio' | 'dificil';
+  difficulty: Difficulty;
   maxTier: number;
   steps: number;
   techniqueCounts: Record<string, number>;
   solved: boolean;
 }
 
-/** Map maxTier to difficulty label. */
-const tierToDifficulty = (tier: number): Rating['difficulty'] => {
+/**
+ * The tier -> level mapping. The only place in the engine where a tier
+ * becomes a level.
+ *
+ *   tier 1 (singles)                      -> facil
+ *   tier 2 (pairs)                        -> medio
+ *   tier 3+ (triples, locked, wings, ...) -> dificil
+ */
+export const tierToDifficulty = (tier: number): Difficulty => {
   if (tier <= 1) return 'facil';
-  if (tier <= 2) return 'medio';
+  if (tier === 2) return 'medio';
   return 'dificil';
 };
 
-/** Rate the puzzle. */
-export const ratePuzzle = (puzzle: Grid): Rating => {
+/** The highest technique tier each level may use. */
+export const DIFFICULTY_MAX_TIER: Record<Difficulty, number> = {
+  facil: 1,
+  medio: 2,
+  dificil: 4,
+};
+
+/** Backstop so a misbehaving technique can never hang the rater. */
+const MAX_STEPS = 500;
+
+/**
+ * Rate a puzzle.
+ *
+ * `maxTier` caps the techniques used, which is how the generator asks "can this
+ * puzzle be solved with only easy techniques?".
+ */
+export const ratePuzzle = (puzzle: Grid, maxTier?: number): Rating => {
   const candidates = initCandidates(puzzle);
+  // A cell is resolved when it carries a given, or when a deduction placed a
+  // digit in it. The candidate mask alone cannot tell "resolved" from "dead
+  // end" (both are zero), so resolution is tracked separately.
+  const resolved = new Uint8Array(81);
+  for (let i = 0; i < 81; i++) resolved[i] = puzzle[i] !== 0 ? 1 : 0;
+
   const techniqueCounts: Record<string, number> = {};
-  let maxTier = 0;
+  let maxUsed = 0;
   let steps = 0;
-  let ded: Deduction | null;
-  while ((ded = findDeduction(candidates))) {
-    // Apply deduction.
-    applyDeduction(candidates, ded);
+
+  while (steps < MAX_STEPS) {
+    const deduction: Deduction | null = findDeduction(candidates, maxTier);
+    if (!deduction) break;
+
+    applyDeduction(candidates, deduction);
+    if (deduction.cell >= 0) resolved[deduction.cell] = 1;
+
     steps++;
-    maxTier = Math.max(maxTier, ded.tier);
-    techniqueCounts[ded.techniqueId] = (techniqueCounts[ded.techniqueId] ?? 0) + 1;
+    maxUsed = Math.max(maxUsed, deduction.tier);
+    techniqueCounts[deduction.techniqueId] =
+      (techniqueCounts[deduction.techniqueId] ?? 0) + 1;
   }
-  // After deductions, check if solved.
-  const solved = candidates.every(mask => mask !== 0 && (mask & (mask - 1)) === 0);
+
+  let solved = true;
+  for (let i = 0; i < 81; i++) {
+    if (resolved[i] === 0) {
+      solved = false;
+      break;
+    }
+  }
+
   return {
-    difficulty: tierToDifficulty(maxTier),
-    maxTier,
+    difficulty: tierToDifficulty(maxUsed),
+    maxTier: maxUsed,
     steps,
     techniqueCounts,
     solved,
   };
 };
-

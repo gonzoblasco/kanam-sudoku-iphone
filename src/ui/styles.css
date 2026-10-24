@@ -1,0 +1,163 @@
+/*
+  Kanam Sudoku iPhone – UI styles
+  Implements the visual requirements of SPEC‑003 (board) and SPEC‑004 (keypad)
+  – 44 px minimum touch targets, dark / light themes via prefers‑color‑scheme,
+  – AA contrast, no reliance on :hover for state indication.
+*/
+
+:root {
+  /* Light theme colours */
+  --bg: #ffffff;
+  --text: #000000;
+  --grid-line: #808080;
+  --selected-outline: #0077ff;
+  --conflict-color: #d02626;
+  --highlight-row: rgba(255, 0, 0, 0.2);
+  --highlight-column: rgba(0, 255, 0, 0.2);
+  --highlight-block: rgba(0, 0, 255, 0.2);
+  --highlight-same: rgba(255, 255, 0, 0.2);
+  --given-weight: 600;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111111;
+    --text: #ffffff;
+    --grid-line: #767676;
+    --selected-outline: #00ffff;
+    --conflict-color: #ff8888;
+    /* keep the same highlight colours – they stay readable on dark */
+    --highlight-row: rgba(255, 0, 0, 0.2);
+    --highlight-column: rgba(0, 255, 0, 0.2);
+    --highlight-block: rgba(0, 0, 255, 0.2);
+    --highlight-same: rgba(255, 255, 0, 0.2);
+    --given-weight: 600;
+  }
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  background: var(--bg);
+  color: var(--text);
+  overflow: hidden; /* no scroll vertical */
+  user-select: none;
+  -webkit-touch-callout: none; /* iOS: disable long‑press menu */
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100dvh; /* fallback handled by the browser */
+  max-height: 100vh;
+  box-sizing: border-box;
+  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom) env(safe-area-inset-left);
+}
+
+/* Board container */
+#board {
+  display: grid;
+  grid-template-columns: repeat(9, 1fr);
+  width: 100%;
+  max-width: 100vw;
+  aspect-ratio: 1; /* square */
+  border: 3px solid var(--grid-line); /* outer border – thicker than inner */
+}
+
+.cell {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1rem;
+  min-width: 44px;
+  min-height: 44px;
+  box-sizing: border-box;
+  border: 1px solid var(--grid-line);
+  background: transparent;
+}
+
+/* Thicker borders for 3×3 block boundaries */
+.cell:nth-child(3n+1) {
+  border-left-width: 3px;
+}
+.cell:nth-child(-n+9) {
+  border-top-width: 3px;
+}
+.cell:nth-child(9n) {
+  border-right-width: 3px;
+}
+.cell:nth-child(n+73) {
+  border-bottom-width: 3px;
+}
+
+/* State visual channels */
+.cell[data-given="true"] {
+  font-weight: var(--given-weight);
+}
+
+.cell[data-selected="true"] {
+  outline: 2px solid var(--selected-outline);
+}
+
+.cell[data-conflict="true"] {
+  border-bottom: 4px solid var(--conflict-color);
+  text-decoration: underline;
+}
+
+.cell[data-highlight="row"] {
+  background: var(--highlight-row);
+}
+.cell[data-highlight="column"] {
+  background: var(--highlight-column);
+}
+.cell[data-highlight="block"] {
+  background: var(--highlight-block);
+}
+.cell[data-highlight="same"] {
+  background: var(--highlight-same);
+}
+
+/* Keypad */
+#keypad {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+  margin-top: 12px;
+}
+
+#keypad button {
+  min-width: 44px;
+  min-height: 44px;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+/* Menu & Victory screens – simple centered boxes */
+.screen {
+  text-align: center;
+}
+
+button.menu-button {
+  display: block;
+  width: 200px;
+  margin: 8px auto;
+  padding: 12px;
+  font-size: 1rem;
+}
+
+/* Hide elements that are not part of the current phase – we toggle via JS */
+.hidden { display: none !important; }
+
+/* Respect prefers‑reduced‑motion – all transitions are instantly 0 duration */
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition-duration: 0s !important;
+    animation-duration: 0s !important;
+  }
+}
+
+/* End of styles */
+

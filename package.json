@@ -6,7 +6,11 @@
     "test": "node --test test/",
     "typecheck": "tsc --noEmit",
     "build": "vite build",
-    "dev": "vite"
+    "dev": "vite",
+    "e2e": "node test/e2e.board.mjs && node test/e2e.keypad.mjs && node test/e2e.pwa.mjs && node test/e2e.a11y.mjs",
+    "icons": "node scripts/generate-icons.mjs",
+    "sw": "node scripts/gen-sw.mjs",
+    "contrast": "node scripts/check-contrast.mjs"
   },
   "devDependencies": {
     "vite": "^7.3.6",
