@@ -137,8 +137,12 @@ body {
 }
 
 .cell[data-conflict="true"] {
-  border-bottom: 3px solid var(--conflict-color);
+  /* Two channels beyond colour: an inner border and an underline, so a
+     colour-blind player still sees the conflict (SPEC-003 RF-11). */
+  box-shadow: inset 0 0 0 2px var(--conflict-color);
   text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-decoration-color: var(--conflict-color);
 }
 
 .cell[data-highlight="row"] {

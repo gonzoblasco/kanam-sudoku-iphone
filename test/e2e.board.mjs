@@ -204,8 +204,75 @@ checks.equal('a given is not edited by tapping', givenEdited, 'unchanged');
 const afterTap = await page.evaluate(() => window.scrollY);
 checks.equal('tapping does not scroll the page', afterTap, 0);
 
+// --- 8b. prefers-reduced-motion disables the transition ---------------------
+{
+  const reduced = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    reducedMotion: 'reduce',
+  });
+  const reducedPage = await reduced.newPage();
+  await reducedPage.goto(`${server.base}/index.html`);
+  await reducedPage.click('button:has-text("Fácil")');
+  await reducedPage.waitForSelector('.cell');
+  await reducedPage.click('.cell[data-index="0"]');
+  const durations = await reducedPage.evaluate(
+    () =>
+      [...document.querySelectorAll('.cell')].map((c) => getComputedStyle(c).transitionDuration),
+  );
+  checks.ok(
+    'reduced motion sets every cell transition to 0s',
+    durations.every((d) => d === '0s' || d === ''),
+    `durations: ${[...new Set(durations)].join(',')}`,
+  );
+  await reduced.close();
+}
+
 // --- 8. No console errors ---------------------------------------------------
 checks.equal('no console errors', consoleErrors.length, 0, consoleErrors.join(' | '));
+
+// --- 9. States do not depend on colour alone --------------------------------
+// SPEC-003 AC: at least one pair of cells with the same background and a
+// different state, distinguished by their data-* attributes. It runs in a fresh
+// context: after a selection, the highlight tint is a legitimate difference.
+{
+const plain = await browser.newContext({ viewport: { width: 390, height: 844 } });
+const plainPage = await plain.newPage();
+await plainPage.goto(`${server.base}/index.html`);
+await plainPage.click('button:has-text("Fácil")');
+await plainPage.waitForSelector('.cell');
+const statePair = await plainPage.evaluate(() => {
+  const cells = [...document.querySelectorAll('.cell')];
+  const bg = (c) => getComputedStyle(c).backgroundColor;
+  const stateOf = (c) =>
+    [...c.attributes]
+      .filter((a) => a.name.startsWith('data-') && !['data-index', 'data-row', 'data-col', 'data-block'].includes(a.name))
+      .map((a) => `${a.name}=${a.value}`)
+      .sort()
+      .join(',');
+  const given = cells.find((c) => c.dataset.given === 'true');
+  const empty = cells.find((c) => c.dataset.given !== 'true' && !c.textContent);
+  if (!given || !empty) return null;
+  return {
+    sameBackground: bg(given) === bg(empty),
+    givenState: stateOf(given),
+    emptyState: stateOf(empty),
+    givenWeight: getComputedStyle(given).fontWeight,
+    emptyWeight: getComputedStyle(empty).fontWeight,
+  };
+});
+await plain.close();
+checks.ok('a given and an empty cell share a background', statePair?.sameBackground === true, JSON.stringify(statePair));
+checks.ok(
+  'their data-* states differ (a given is not distinguished by colour)',
+  statePair !== null && statePair.givenState !== statePair.emptyState,
+  `${statePair?.givenState} vs "${statePair?.emptyState}"`,
+);
+checks.ok(
+  'the given also carries a typographic weight',
+  statePair !== null && statePair.givenWeight !== statePair.emptyWeight,
+  `${statePair?.givenWeight} vs ${statePair?.emptyWeight}`,
+);
+}
 
 await browser.close();
 server.close();

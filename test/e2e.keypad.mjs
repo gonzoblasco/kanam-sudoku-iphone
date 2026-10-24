@@ -227,6 +227,22 @@ if (solution.solution) {
     conflicts: document.querySelectorAll('[data-conflict="true"]').length,
     stillPlaying: !document.getElementById('board').classList.contains('hidden'),
   }));
+  const conflictChannels = await conflictPage.evaluate(() => {
+    const cell = document.querySelector('[data-conflict="true"]');
+    if (!cell) return null;
+    const style = getComputedStyle(cell);
+    return {
+      inset: style.boxShadow,
+      decoration: style.textDecorationLine,
+    };
+  });
+  checks.ok(
+    'a conflicting cell has an inner border and an underline, not just colour',
+    Boolean(conflictChannels) &&
+      conflictChannels.inset !== 'none' &&
+      conflictChannels.decoration.includes('underline'),
+    JSON.stringify(conflictChannels),
+  );
   checks.equal('the conflicting board is complete', conflicting.filled, true);
   checks.atLeast('the conflicts are marked', conflicting.conflicts, 2, 'cells');
   checks.ok('a complete but conflicting board does not win', conflicting.victoryHidden);
