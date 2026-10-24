@@ -1,0 +1,63 @@
+# CI - build, test, typecheck, e2e
+#
+# Corre en cada push y PR. Publica SOLO en el job de deploy, que es un workflow
+# aparte (deploy.yml) con la aprobacion de Gonzo.
+
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 26
+
+      - name: Install
+        run: npm ci
+
+      - name: Typecheck
+        # Type stripping (node --test) NO verifica tipos: los borra. Este es el gate.
+        run: npm run typecheck
+
+      - name: Test
+        # node --test sobre .ts, sin paso de build (Node 26, type stripping nativo).
+        run: npm test
+
+      - name: Build
+        run: npm run build
+
+      - name: Install Playwright (e2e)
+        # playwright-core y Chromium NO son dependencias del proyecto: el proyecto
+        # no los declara a proposito. El CI los instala en su propio entorno.
+        run: |
+          npm install --no-save playwright-core@1.49.1
+          npx playwright-core install chromium
+
+      - name: E2E
+        run: |
+          npm run build
+          node test/e2e.board.mjs
+          node test/e2e.keypad.mjs
+          node test/e2e.pwa.mjs
+          node test/e2e.a11y.mjs
+
+      - name: Contrast check
+        run: node scripts/check-contrast.mjs
