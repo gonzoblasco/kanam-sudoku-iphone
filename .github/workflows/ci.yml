@@ -48,7 +48,7 @@ jobs:
         # playwright-core y Chromium NO son dependencias del proyecto: el proyecto
         # no los declara a proposito. El CI los instala en su propio entorno.
         run: |
-          npm install --no-save playwright-core@1.49.1
+          npm install --no-save playwright-core@1.62.1
           npx playwright-core install chromium
 
       - name: E2E
