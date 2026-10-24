@@ -15,7 +15,8 @@
     "contrast": "node scripts/check-contrast.mjs"
   },
   "devDependencies": {
-    "vite": "^7.3.6",
-    "typescript": "^5.7.0"
+    "@types/node": "^24.19.2",
+    "typescript": "^5.7.0",
+    "vite": "^7.3.6"
   }
 }
