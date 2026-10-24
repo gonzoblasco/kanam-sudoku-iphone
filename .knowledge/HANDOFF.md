@@ -5,6 +5,11 @@
 Estado al cierre de la sesion del **2026-10-24**. La verificacion que sigue es
 **reproducida**: el comando y su salida, no la interpretacion.
 
+**Publicado:** https://github.com/gonzoblasco/kanam-sudoku-iphone (publico) ->
+https://gonzoblasco.github.io/kanam-sudoku-iphone/ (CI verde, deploy verde,
+sitio verificado en Chromium real: 81 celdas, escritura funcionando, 0 errores
+de consola).
+
 ## Que esta hecho
 
 Un sudoku 9x9 **mobile-first para iPhone**: PWA instalable, jugable offline,
@@ -24,10 +29,11 @@ npm test
 ```
 
 ```
-ℹ tests 61
-ℹ pass 61
+ℹ tests 73
+ℹ suites 8
+ℹ pass 73
 ℹ fail 0
-ℹ duration_ms 1585.082209
+ℹ duration_ms 1585.355833
 ```
 
 ```bash
@@ -47,11 +53,11 @@ node scripts/gen-sw.mjs
 ```
 
 ```
-dist/index.html                  0.82 kB │ gzip: 0.42 kB
-dist/assets/index-DFtabczO.css   2.39 kB │ gzip: 0.85 kB
-dist/assets/index-BcioKX2A.js   20.20 kB │ gzip: 6.96 kB
-✓ built in 100ms
-Service worker generated at .../dist/sw.js with version 1d201e30
+dist/index.html                  1.17 kB │ gzip: 0.57 kB
+dist/assets/index-BV-NXUUz.css   3.24 kB │ gzip: 1.20 kB
+dist/assets/index-rC5Dqnj-.js   23.82 kB │ gzip: 7.96 kB
+✓ built in 101ms
+Service worker generated at .../dist/sw.js with version c1147ab3
 ```
 
 ```bash
@@ -85,7 +91,8 @@ grep -rn "1 <<" src/ | grep -v "src/core/mask.ts"
 | Unicidad | `countSolutions(puzzle, 2) === 1` para los 3 niveles |
 | Nivel medido vs pedido | facil=tier 1, medio=tier 2, dificil=tier 3 |
 | Tiempo por puzzle | 13 ms (facil) · 13 ms (medio) · 105 ms (dificil) |
-| Bundle | 20.2 kB (6.96 kB gzip), **cero dependencias de runtime** |
+| Bundle | 23.8 kB (7.96 kB gzip), **cero dependencias de runtime** |
+| Celda del tablero | 43.33px a 390px de viewport, 44px exactos a 430px, sin recorte ni solape |
 
 ## Mapa del proyecto
 
@@ -101,16 +108,46 @@ test/         3 suites node --test + 4 e2e en Chromium real (390x844)
 docs/         architecture, CONTEXT, data-model, adr/ (6 ADRs)
 ```
 
+## La revision B (paso B del pipeline A/B) encontro 18 bugs reales
+
+Todos corregidos y verificados. Los que importan:
+
+1. **El tablero estaba TRANSPUESTO**: las celdas se apendaban a contenedores
+   `role="row"` que el CSS apilaba en vertical, asi que filas y columnas estaban
+   invertidas. **Ningun test lo veia** porque todos median geometria y nunca
+   comparaban el dato con la pantalla.
+2. **`.sr-only` no existia**: la region `aria-live` se pintaba visible debajo del
+   teclado.
+3. **Tres tecnicas con deducciones falsas** (`x_wing` eliminaba el digito de las
+   cuatro esquinas de su propio patron, `swordfish` mal calculaba las columnas,
+   `unique_rectangle` borraba un tercer digito cualquiera). Reescritas y fuzzeadas
+   contra la solucion real: 447 eliminaciones, 0 incorrectas.
+4. **El generador resembra con `base + n*stride`**, que es exactamente la
+   actualizacion de estado de mulberry32: un seed malo seguia malo cientos de
+   intentos. Corregido con un solo stream sembrado por corrida.
+5. **`matched:false` mentia el nivel**: reportaba el nivel medido *con el cap
+   pedido*. Corregido (re-rating sin cap).
+6. **`undo` roto tras el tope del historial**: recalculaba el valor previo
+   escaneando hacia atras y, al caer la entrada que escribio la celda, restauraba
+   `0` sobre un valor real. Corregido capturando el `prev` por entrada.
+7. **El cronometro se reseteaba** al continuar, y **no pausaba en background**
+   (10 minutos en otra app contaban como 10 de juego).
+8. **La partida ganada quedaba guardada**: al recargar ofrecía "Continuar" sobre
+   un tablero ya ganado.
+9. **`gen-sw.mjs` precacheaba su propio `sw.js`**, asi que la version derivada
+   del contenido cambiaba en cada corrida.
+10. **`generate-icons.mjs` usaba `sips`** (macOS-only, contra ADR-0003) y los tres
+    iconos eran byte-identicos. Reescrito con `node:zlib` puro.
+
 ## Lo que sigue
 
-1. **Publicar**: crear el repo publico `gonzoblasco/kanam-sudoku-iphone`,
-   `git push -u origin main`, y habilitar Pages (Settings -> Pages -> Source:
-   **GitHub Actions**). El workflow `.github/workflows/deploy.yml` ya esta listo.
-2. **Verificar en el iPhone**: abrir la URL en Safari, Compartir -> Anadir a
-   pantalla de inicio, confirmar icono propio y apertura sin barra, y probar sin
-   datos moviles.
-3. **Cerrar la sesion del workspace**: `MEMORY.md` y `docs/CHANGELOG.md` ya
-   tienen la entrada; falta el daily (`skills/session-lifecycle/scripts/session-end.sh`).
+1. **Verificar en el iPhone** (lo unico que no se puede medir desde aca): abrir la
+   URL en Safari, Compartir -> Anadir a pantalla de inicio, confirmar el icono
+   propio, la apertura sin barra de Safari, y jugar sin datos moviles.
+2. **Confirmar D4-D6** (nombre del repo, cronometro, menu inicial) si se quiere
+   cambiar alguno: son reversibles, pero el nombre ya esta publicado.
+3. **Cerrar la sesion del workspace**: `MEMORY.md` y `docs/CHANGELOG.md` tienen la
+   entrada; falta el daily (`skills/session-lifecycle/scripts/session-end.sh`).
 
 ## Deuda que queda (con nombre)
 
@@ -145,3 +182,17 @@ docs/         architecture, CONTEXT, data-model, adr/ (6 ADRs)
    significaba "resuelta" en el analisis y "sin candidatos" en el solver. Con una
    grilla valida y una celda vacia, el solver la daba por irresoluble. El solver
    ahora tiene su propia convencion.
+5. **Un test que mide geometria no ve un tablero transpuesto**: la revision B
+   encontro que el sudoku se dibujaba con filas y columnas invertidas, y todos
+   los tests pasaban, porque ninguno comparaba el valor de una celda con el dato
+   del motor. El e2e ahora lee el puzzle del DOM y lo resuelve.
+6. **La aritmetica de la spec puede ser imposible**: nueve celdas de 44px
+   necesitan 396px y el viewport de referencia tiene 390px. B respeto los 44px y
+   recorto el tablero (la ultima columna se perdia; en un iPhone SE, una columna
+   entera). Resuelto: el tablero es fluido (`min(100%, 396px)`) y la celda es un
+   noveno de la fila, con base porcentual para que el borde quede dentro de la
+   celda. Medido: 390px -> 43.33px, 375px -> 41.66px, 430px -> 44px exactos, sin
+   solape. La spec, el e2e y el AGENTS.md quedaron reconciliados con la aritmetica.
+7. **Un typecheck puede depender del entorno**: `tsc` resolvia los tipos de Node
+   desde el `node_modules` del workspace padre, asi que pasaba local y fallaba en
+   CI. `@types/node` es ahora una devDependency del proyecto.

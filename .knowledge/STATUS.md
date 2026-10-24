@@ -4,8 +4,8 @@
 
 ## Fase actual
 
-**Desarrollo implementado y verificado (2026-10-24).** Revision independiente (paso B
-del pipeline A/B) en curso. Repo publico y deploy pendientes.
+**Publicado y en vivo (2026-10-24).** Revision independiente (paso B) cerrada con 18
+bugs corregidos. Repo publico en GitHub Pages, verificado en el sitio desplegado.
 
 ## Etapas
 
@@ -16,8 +16,8 @@ del pipeline A/B) en curso. Repo publico y deploy pendientes.
 | Specs + Knowledge | Completada | 2026-10-24 |
 | Diseno (architecture, CONTEXT, data-model, ADRs) | Completada | 2026-10-24 |
 | Desarrollo | Completada | 2026-10-24 |
-| Revision independiente (B) | En curso | - |
-| Publicacion y deploy | Pendiente | - |
+| Revision independiente (B) | Completada (18 bugs) | 2026-10-24 |
+| Publicacion y deploy | Completada | 2026-10-24 |
 
 ## Decisiones
 
@@ -39,14 +39,17 @@ del primer push.
 
 | Gate | Resultado |
 |---|---|
-| `npm test` | **61/61 tests, 0 fallos**, 1.6 s |
+| `npm test` | **73/73 tests, 0 fallos**, 1.6 s |
 | `npm run typecheck` (`tsc --noEmit`) | limpio |
 | `npm run build` | ok, 20.2 kB (6.96 kB gzip) |
 | `node scripts/check-contrast.mjs` | **todos los pares AA** en ambos temas (9 pares x 2 temas) |
-| `node test/e2e.board.mjs` | **19/19** |
-| `node test/e2e.keypad.mjs` | **23/23** (incluye jugar una partida completa hasta la victoria) |
-| `node test/e2e.pwa.mjs` | **45/45** (manifest, iconos reales, SW, offline jugable, subpath) |
-| `node test/e2e.a11y.mjs` | **7/7** (axe-core: 0 violaciones) |
+| `node test/e2e.board.mjs` | **27/27** |
+| `node test/e2e.keypad.mjs` | **34/34** (incluye jugar una partida completa hasta la victoria) |
+| `node test/e2e.pwa.mjs` | **61/61** (manifest, iconos reales, SW, offline jugable, subpath) |
+| `node test/e2e.a11y.mjs` | **11/11** (axe-core: 0 violaciones) |
+| CI en GitHub | **verde** (typecheck, tests, build, e2e, contraste) |
+| Deploy en GitHub Pages | **verde** |
+| Sitio desplegado | HTTP 200, 81 celdas, escritura funciona, 0 errores de consola |
 | `grep -rn "1 <<" src/ \| grep -v mask.ts` | vacio (una sola convencion de mascara) |
 
 **Comportamiento medido del motor:** 55-57 celdas vacias por puzzle, solucion
@@ -82,9 +85,16 @@ falla.
 
 ## Proximo
 
-1. Cerrar la revision B y verificar sus cambios con los mismos gates.
-2. Crear el repo **publico** `gonzoblasco/kanam-sudoku-iphone`, pushear, y
-   habilitar Pages.
-3. Verificar la app en el iPhone (Safari, add-to-home-screen, sin conexion).
-4. Cerrar la sesion: `HANDOFF.md` en `.knowledge/`, registro en `MEMORY.md` y
-   `CHANGELOG.md` del workspace.
+1. **Verificar en el iPhone** (lo unico que no se puede medir desde aca):
+   Safari -> Compartir -> Anadir a pantalla de inicio, confirmar el icono propio,
+   la apertura sin barra de Safari, y jugar sin datos moviles.
+2. **Confirmar D4-D6** (nombre del repo, cronometro, menu inicial) si se quiere
+   cambiar alguno: son reversibles, pero el nombre ya esta publicado.
+3. **Cerrar la sesion del workspace**: `MEMORY.md` y `docs/CHANGELOG.md` tienen la
+   entrada; falta el daily (`skills/session-lifecycle/scripts/session-end.sh`).
+
+## Publicacion
+
+- Repo: https://github.com/gonzoblasco/kanam-sudoku-iphone (**publico**)
+- Sitio: https://gonzoblasco.github.io/kanam-sudoku-iphone/
+- Pages: `build_type: workflow`, deploy verde.
