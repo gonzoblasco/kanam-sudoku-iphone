@@ -64,5 +64,8 @@ export function initNotesControls(
 export function setNotesMode(controls: NotesControls, active: boolean): void {
   controls.notesButton.setAttribute('aria-pressed', active ? 'true' : 'false');
   controls.notesButton.classList.toggle('is-active', active);
-  controls.notesButton.textContent = active ? 'Notas: sí' : 'Notas';
+  // The label does not change: the inverted fill and `aria-pressed` already say
+  // the mode is on, and a button whose text changes under the finger is a
+  // button that shifts its own hit area.
+  controls.notesButton.textContent = 'Notas';
 }

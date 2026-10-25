@@ -138,6 +138,30 @@ interface CellView {
 }
 ```
 
+## 4bis. Sistema visual (2026-10-24)
+
+La paleta y la jerarquia salen de una pasada de diseno medida, no de gusto solo.
+Cada par de color lo verifica `scripts/check-contrast.mjs`, que rompe el build
+cuando uno baja de AA.
+
+- **Un solo matiz, cuatro pasos.** El sudoku necesita mostrar cuatro contextos a
+  la vez (fila, columna, bloque, mismo digito). Cuatro colores distintos
+  convierten el tablero en una planilla con formato condicional y se vuelven
+  barro en oscuro. Hay **un** matiz de acento en cuatro intensidades, y cada
+  contexto lleva ademas un canal que no es color.
+- **Papel calido, tinta calida.** Fondo `#faf7f2` en claro y `#14120f` en oscuro:
+  el blanco puro y el negro puro son un error en una app que se mira de noche.
+- **El acento es teal** (`#0f766e` claro, `#5eead4` oscuro) y se usa con avaricia:
+  la seleccion y la regla bajo el titulo del menu, nada mas.
+- **El conflicto es el unico otro color saturado** (`#b91c1c` / `#f87171`): es lo
+  unico que no se puede pasar por alto.
+- **Cifras tabulares** en todo el tablero: una columna que se corre al escribir es
+  un tablero que parece roto.
+- **Las teclas se hunden** (`scale(0.96)` al pulsar): una tecla que responde es una
+  tecla que se siente.
+- **"Borrar" no domina**: es mas chico y esta atenuado, porque borrar es la accion
+  rara y un teclado cuyo boton mas grande es "borrar" invita al error.
+
 ## 5. Acceptance Criteria
 
 - Con un viewport de **390x844**, el documento **no tiene scroll vertical**:

@@ -1,9 +1,24 @@
 /*
   Kanam Sudoku iPhone - UI styles
 
-  Implements the visual requirements of SPEC-003 (board) and SPEC-004 (keypad):
-  44px minimum touch targets, light/dark themes through `prefers-color-scheme`,
-  AA contrast, and no state that is carried by colour alone.
+  The palette and the rules that follow come from a measured design pass, not
+  from taste alone: every colour pair below is checked by
+  `scripts/check-contrast.mjs`, which fails the build when a pair drops under
+  WCAG AA (4.5:1 for body text, 3:1 for large text and UI boundaries).
+
+  Three ideas hold the design together:
+
+  1. THE BOARD IS THE INSTRUMENT. The chrome is quiet: no gradients, no soft
+     shadows, no decorative colour. The paper is warm, the ink is warm, and the
+     only saturated colour on screen is the accent, used sparingly.
+  2. ONE HUE, FOUR STEPS. A sudoku needs to show four contexts at once (row,
+     column, block, same digit). Four different hues turn the board into a
+     spreadsheet with conditional formatting, and they go to mud in dark mode.
+     Instead there is ONE accent hue in four steps of intensity, and each
+     context also carries a non-colour channel, so the states never rely on
+     colour alone.
+  3. TOUCH IS THE POINT. It is an iPhone game played with a thumb: 43px cells,
+     44px keys, and a key that visibly moves when pressed.
 
   Layout contract: the board is a column of 9 rows, and every row is a flex row
   of 9 cells. A cell is placed in the row container of its own row (render.ts);
@@ -11,40 +26,61 @@
 */
 
 :root {
-  --bg: #ffffff;
-  --text: #000000;
-  --grid-line: #808080;
-  --selected-outline: #0077ff;
-  --conflict-color: #d02626;
-  --highlight-row: rgba(255, 0, 0, 0.2);
-  --highlight-column: rgba(0, 255, 0, 0.2);
-  --highlight-block: rgba(0, 0, 255, 0.2);
-  --highlight-same: rgba(255, 255, 0, 0.2);
-  --given-weight: 600;
-  /* The candidate digits of a cell. Checked for AA against --bg. */
-  --note-color: #4a4a4a;
-  --key-bg: #f1f1f1;
-  --key-border: #767676;
+  color-scheme: light dark;
+
+  /* Warm paper, warm ink. Pure white is a mistake in an app you look at in
+     bed, and pure black is a hole. */
+  --bg: #faf7f2;
+  --text: #1c1917;
+  --note-color: #6b6560;
+
+  /* The grid is structure, not decoration: it has to be visible enough to
+     read the board (3:1) without competing with the digits. */
+  --grid-line: #8f8478;
+
+  /* One accent: a deep teal. It marks the selection, and nothing else. */
+  --selected-outline: #0f766e;
+
+  /* A conflict is the one thing that must never be missed, so it gets the only
+     other saturated colour on screen. */
+  --conflict-color: #b91c1c;
+
+  /* Four steps of the same hue. Row and column share the lightest step (they
+     are the same idea seen from two axes); the block is a step darker and the
+     same-digit cells darker still. The selected cell is the darkest. */
+  --highlight-row: rgba(15, 118, 110, 0.07);
+  --highlight-column: rgba(15, 118, 110, 0.07);
+  --highlight-block: rgba(15, 118, 110, 0.12);
+  --highlight-same: rgba(15, 118, 110, 0.2);
+
+  --given-weight: 650;
+
+  --key-bg: #f0ebe3;
+  --key-border: #c9c0b4;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #111111;
-    --text: #ffffff;
-    --grid-line: #767676;
-    --selected-outline: #00ffff;
-    --conflict-color: #ff8888;
-    /* The highlight tints sit on top of the page background, so they keep the
-       same alpha: the composited result is checked by check-contrast.mjs. */
-    --highlight-row: rgba(255, 0, 0, 0.2);
-    --highlight-column: rgba(0, 255, 0, 0.2);
-    --highlight-block: rgba(0, 0, 255, 0.2);
-    --highlight-same: rgba(255, 255, 0, 0.2);
-    --given-weight: 600;
-    /* The candidate digits of a cell. Checked for AA against --bg. */
-    --note-color: #cfcfcf;
-    --key-bg: #2a2a2a;
-    --key-border: #9a9a9a;
+    /* Warm charcoal, not black: a black board on an OLED at night is a hole
+       with digits floating in it. */
+    --bg: #14120f;
+    --text: #f5f1ea;
+    --note-color: #a8a099;
+    --grid-line: #6e665d;
+    --selected-outline: #5eead4;
+    --conflict-color: #f87171;
+
+    /* The same four steps, with a brighter accent and slightly higher alpha,
+       because a translucent tint loses presence on a dark surface. */
+    --highlight-row: rgba(94, 234, 212, 0.1);
+    --highlight-column: rgba(94, 234, 212, 0.1);
+    --highlight-block: rgba(94, 234, 212, 0.16);
+    --highlight-same: rgba(94, 234, 212, 0.26);
+
+    --given-weight: 650;
+
+    --key-bg: #211e1a;
+    --key-border: #453f38;
   }
 }
 
@@ -59,8 +95,17 @@ body {
   user-select: none;
   -webkit-touch-callout: none; /* iOS: a long press must not open the menu */
   font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  /* Digits that do not change width as the numbers change: a board whose
+     columns shift as you type is a board that feels broken. */
+  font-variant-numeric: tabular-nums;
+  -webkit-font-smoothing: antialiased;
 }
 
+/* No horizontal padding on purpose: nine cells of 43px need 387px and a 390px
+   viewport has 390. Three pixels is the whole horizontal budget, so the board
+   runs edge to edge and the air in this design lives in the vertical rhythm and
+   in the weight of the type, not in margins. Padding here would push the cells
+   under the 43px touch floor. */
 #app {
   display: flex;
   flex-direction: column;
@@ -68,8 +113,7 @@ body {
   justify-content: center;
   height: 100dvh;
   box-sizing: border-box;
-  padding: env(safe-area-inset-top) env(safe-area-inset-right) env(safe-area-inset-bottom)
-    env(safe-area-inset-left);
+  padding: env(safe-area-inset-top) 0 env(safe-area-inset-bottom) 0;
   min-height: 0;
 }
 
@@ -92,7 +136,12 @@ body {
   width: min(100%, 396px);
   aspect-ratio: 1;
   margin: 0 auto;
+  /* A hair of radius and a single hairline of shadow: enough to read the board
+     as an object resting on the page, not enough to be decoration. */
+  border-radius: 3px;
+  box-shadow: 0 1px 2px rgba(28, 25, 23, 0.06);
   touch-action: manipulation;
+  overflow: hidden;
 }
 
 .board-row {
@@ -118,7 +167,16 @@ body {
   box-sizing: border-box;
   border: 1px solid var(--grid-line);
   background: transparent;
-  font-size: 1.25rem;
+  font-size: 1.7rem;
+  font-weight: 450;
+  line-height: 1;
+  transition: background-color 90ms ease-out;
+}
+
+/* The value of a cell and its notes are different information: the value is a
+   digit the board holds, the notes are what the player is still considering. */
+.cell-value {
+  display: block;
   line-height: 1;
 }
 
@@ -140,15 +198,19 @@ body {
 
 /* --- Cell states ----------------------------------------------------------
    Each state has a channel of its own: weight, outline, underline + border, or
-   a background tint. Colour is never the only signal. */
+   a background step. Colour is never the only signal. */
 
+/* A given is the puzzle speaking, so it is stated with weight. */
 .cell[data-given="true"] {
   font-weight: var(--given-weight);
+  letter-spacing: -0.01em;
 }
 
+/* The selection is the cursor: a hard outline in the accent. */
 .cell[data-selected="true"] {
   outline: 2px solid var(--selected-outline);
   outline-offset: -2px;
+  background: var(--highlight-same);
 }
 
 .cell[data-conflict="true"] {
@@ -157,9 +219,11 @@ body {
   box-shadow: inset 0 0 0 2px var(--conflict-color);
   text-decoration: underline;
   text-decoration-thickness: 2px;
+  text-underline-offset: 2px;
   text-decoration-color: var(--conflict-color);
 }
 
+/* The four contexts, as four steps of one hue. */
 .cell[data-highlight="row"] {
   background: var(--highlight-row);
 }
@@ -171,6 +235,79 @@ body {
 }
 .cell[data-highlight="same"] {
   background: var(--highlight-same);
+  /* The same-digit cells also get weight: they are the ones you scan for. */
+  font-weight: 650;
+}
+
+/* --- Notes -----------------------------------------------------------------
+   The classic 3x3 pencil-mark grid. Each slot holds one candidate digit in
+   the position of its own value, so a cell reads like a small sudoku. */
+
+.note-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  grid-template-rows: repeat(3, 1fr);
+  width: 100%;
+  height: 100%;
+  padding: 12%;
+  box-sizing: border-box;
+  pointer-events: none;
+  user-select: none;
+}
+
+.note-slot {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.62rem;
+  font-weight: 500;
+  line-height: 1;
+  color: var(--note-color);
+}
+
+/* A cell that shows notes holds no value, so the digit is smaller. */
+.cell:has(.note-grid) {
+  font-size: 1rem;
+}
+
+/* --- Notes toolbar --------------------------------------------------------
+   Three controls above the keypad: notes mode, automatic candidates, clear.
+   They are secondary actions, so they are quieter than the keypad. */
+
+#notes-toolbar {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+  width: min(100%, 396px);
+  margin-top: 10px;
+  touch-action: manipulation;
+}
+
+#notes-toolbar button {
+  min-height: 40px;
+  padding: 0 8px;
+  font-size: 0.82rem;
+  font-weight: 550;
+  letter-spacing: 0.02em;
+  background: transparent;
+  color: var(--note-color);
+  border: 1px solid var(--key-border);
+  border-radius: 7px;
+  cursor: pointer;
+  transition: background-color 90ms ease-out, color 90ms ease-out;
+}
+
+/* The active notes mode is not a colour change: it inverts, which is a shape
+   and weight change too, and it carries `aria-pressed` for a screen reader.
+   The selector repeats the id and the attribute so it outranks the base
+   `#notes-toolbar button` rule above; with equal specificity the base rule won
+   and the button stayed transparent. */
+#notes-toolbar button[aria-pressed="true"],
+#notes-toolbar button[aria-pressed="true"]:hover {
+  background: var(--selected-outline);
+  border-color: var(--selected-outline);
+  color: var(--bg);
+  font-weight: 700;
 }
 
 /* --- Keypad --------------------------------------------------------------- */
@@ -178,46 +315,129 @@ body {
 #keypad {
   display: grid;
   grid-template-columns: repeat(4, 1fr);
-  grid-auto-rows: 44px;
-  gap: 4px;
-  width: calc(9 * 44px);
-  max-width: 100vw;
-  margin-top: 12px;
+  grid-auto-rows: 48px;
+  gap: 6px;
+  width: min(100%, 396px);
+  margin-top: 14px;
   padding-bottom: env(safe-area-inset-bottom);
   touch-action: manipulation;
   -webkit-touch-callout: none;
 }
 
-/* Keys 1-9 fill the first three columns; erase sits on their right. */
+/* Keys 1-9 fill the first three columns; erase sits on their right, spanning
+   their three rows. It is quieter than the digits on purpose: erasing is the
+   rarer action, and a keypad whose largest key is "delete" invites mistakes. */
 #keypad button[data-digit="0"] {
   grid-column: 4;
   grid-row: 1 / span 3;
+  font-size: 0.85rem;
+  font-weight: 600;
+  letter-spacing: 0.03em;
+  opacity: 0.72;
 }
 
 #keypad button {
   min-width: 44px;
   min-height: 44px;
-  font-size: 1.25rem;
+  font-size: 1.35rem;
+  font-weight: 500;
   background: var(--key-bg);
   color: var(--text);
   border: 1px solid var(--key-border);
-  border-radius: 8px;
+  border-radius: 7px;
   cursor: pointer;
+  box-shadow: 0 1px 0 rgba(28, 25, 23, 0.05);
+  transition: transform 60ms ease-out, background-color 60ms ease-out;
 }
 
-/* --- Menu and victory ----------------------------------------------------- */
+/* A key that visibly moves is a key that feels like a key. */
+#keypad button:active {
+  transform: scale(0.96);
+}
+
+/* --- Menu ----------------------------------------------------------------- */
 
 .screen {
   text-align: center;
 }
 
-button.menu-button {
+#menu {
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  width: 100%;
+  max-width: 340px;
+  height: 100%;
+  margin: 0 auto;
+  padding: 0 24px;
+  box-sizing: border-box;
+  text-align: left;
+}
+
+#menu h1 {
+  margin: 0 0 4px;
+  font-size: 2.6rem;
+  font-weight: 700;
+  letter-spacing: -0.035em;
+  line-height: 1;
+}
+
+/* The rule under the title is the one place the accent appears on this screen:
+   a short stroke that gives the name a baseline to sit on. */
+#menu h1::after {
+  content: "";
   display: block;
-  width: 200px;
-  min-height: 44px;
-  margin: 8px auto;
-  padding: 12px;
-  font-size: 1rem;
+  width: 44px;
+  height: 3px;
+  margin-top: 16px;
+  border-radius: 2px;
+  background: var(--selected-outline);
+}
+
+button.menu-button {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  min-height: 58px;
+  margin: 6px 0;
+  padding: 0 18px;
+  font-size: 1.05rem;
+  font-weight: 550;
+  letter-spacing: -0.01em;
+  text-align: left;
+  background: var(--key-bg);
+  color: var(--text);
+  border: 1px solid var(--key-border);
+  border-radius: 8px;
+  box-shadow: 0 1px 0 rgba(28, 25, 23, 0.05);
+  cursor: pointer;
+  transition: transform 90ms ease-out;
+}
+
+button.menu-button::after {
+  content: "\2192";
+  font-size: 1.1rem;
+  opacity: 0.45;
+}
+
+button.menu-button:active {
+  transform: scale(0.985);
+}
+
+button.menu-button:disabled {
+  opacity: 0.4;
+  cursor: default;
+}
+
+button.menu-button:disabled::after {
+  content: "";
+}
+
+/* The first level button after the title needs air; the rule already gives
+   it, so the list starts a little lower. */
+#menu h1 + button.menu-button {
+  margin-top: 22px;
 }
 
 /* Generating: the menu stays usable, the keys just look inactive. */
@@ -248,57 +468,29 @@ button.menu-button {
   white-space: nowrap;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  * {
-    transition-duration: 0s !important;
-    animation-duration: 0s !important;
-  }
+/* --- Victory -------------------------------------------------------------- */
+
+#victory h2 {
+  margin: 0 0 8px;
+  font-size: 2rem;
+  font-weight: 700;
+  letter-spacing: -0.03em;
 }
 
-/* --- Notes -----------------------------------------------------------------
-   The classic 3x3 pencil-mark grid. Each slot holds one candidate digit in
-   the position of its own value, so a cell reads like a small sudoku. */
-
-.note-grid {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  grid-template-rows: repeat(3, 1fr);
-  width: 100%;
-  height: 100%;
-  pointer-events: none;
-  user-select: none;
-}
-
-.note-slot {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 0.5rem;
-  line-height: 1;
+#victory .time {
+  margin: 0 0 24px;
+  font-size: 1rem;
+  font-weight: 500;
   color: var(--note-color);
 }
 
-/* A cell that shows notes holds no value, so the digit is smaller. */
-.cell:has(.note-grid) {
+#victory button {
+  display: block;
+  width: 240px;
+  min-height: 52px;
+  margin: 8px auto;
   font-size: 1rem;
-}
-
-/* --- Notes toolbar --------------------------------------------------------
-   Three controls above the keypad: notes mode, automatic candidates, clear. */
-
-#notes-toolbar {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 6px;
-  width: min(100%, 396px);
-  margin-top: 8px;
-  touch-action: manipulation;
-}
-
-#notes-toolbar button {
-  min-height: 44px;
-  padding: 0 8px;
-  font-size: 0.95rem;
+  font-weight: 550;
   background: var(--key-bg);
   color: var(--text);
   border: 1px solid var(--key-border);
@@ -306,10 +498,9 @@ button.menu-button {
   cursor: pointer;
 }
 
-/* The active notes mode is not a colour change: it also gets a thicker
-   border and a pressed state. */
-#notes-toolbar button[aria-pressed="true"] {
-  border-width: 3px;
-  font-weight: 700;
-  background: var(--highlight-column);
+@media (prefers-reduced-motion: reduce) {
+  * {
+    transition-duration: 0s !important;
+    animation-duration: 0s !important;
+  }
 }
